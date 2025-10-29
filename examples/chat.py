@@ -1,7 +1,9 @@
-"""Client for the CometD Chat Example"""
-import asyncio
+"""CometD Chat Example Client."""
+
 import argparse
-from typing import Dict, Any
+import asyncio
+from contextlib import suppress
+from typing import Any, Dict
 
 from aioconsole import ainput  # type: ignore
 
@@ -9,103 +11,94 @@ from aiocometd import Client, ConnectionType
 from aiocometd.exceptions import AiocometdException
 
 
-async def chat_client(url: str, nickname: str,
-                      connection_type: ConnectionType) -> None:
-    """Runs the chat client until it's canceled
+async def chat_client(url: str, nickname: str, connection_type: ConnectionType) -> None:
+    """Run a CometD chat client until it is canceled.
 
-    :param url: CometD server URL
-    :param nickname: The user's nickname
-    :param connection_type: Connection type
+    Args:
+        url (str): The CometD server URL.
+        nickname (str): The user's nickname.
+        connection_type (ConnectionType): The connection transport type.
     """
+    room_name = "demo"
+    room_channel = f"/chat/{room_name}"
+    members_changed_channel = f"/members/{room_name}"
+    members_channel = "/service/members"
+
     try:
-        room_name = "demo"
-        room_channel = "/chat/" + room_name
-        members_changed_channel = "/members/" + room_name
-        members_channel = "/service/members"
-
-        # start the client with the given connection type
         async with Client(url, connection_type) as client:
-            print(f"Connected to '{url}' using connection "
-                  f"type '{connection_type.value}'\n")
+            print(f"Connected to '{url}' using '{connection_type.value}' transport.\n")
 
-            # subscribe to the chat room's channel to receive messages
+            # Subscribe to channels
             await client.subscribe(room_channel)
-
-            # subscribe to the members channel to get notifications when the
-            # list of the room's members changes
             await client.subscribe(members_changed_channel)
 
-            # publish to the room's channel that the user has joined
+            # Announce presence
             await client.publish(room_channel, {
                 "user": nickname,
                 "membership": "join",
-                "chat": nickname + " has joined"
+                "chat": f"{nickname} has joined"
             })
 
-            # add the user to the room's members
+            # Add user to the members list
             await client.publish(members_channel, {
                 "user": nickname,
                 "room": room_channel
             })
 
-            # start the message publisher task
-            input_task = asyncio.ensure_future(
-                input_publisher(client, nickname, room_channel))
-
+            # Start background task for user input
+            input_task = asyncio.create_task(input_publisher(client, nickname, room_channel))
             last_user = None
-            try:
-                # listen for incoming messages
-                async for message in client:
-                    # if a chat message is received
-                    if message["channel"] == room_channel:
-                        data = message["data"]
-                        if data["user"] == last_user:
-                            user = "..."
-                        else:
-                            last_user = data["user"]
-                            user = data["user"] + ":"
-                        # print the incoming message
-                        print(f"{user} {data['chat']}")
 
-                    # if the room's members change
-                    elif message["channel"] == members_changed_channel:
-                        print("MEMBERS:", ", ".join(message["data"]))
+            try:
+                async for message in client:
+                    channel = message["channel"]
+                    data = message.get("data", {})
+
+                    if channel == room_channel:
+                        user = data["user"]
+                        prefix = "..." if user == last_user else f"{user}:"
+                        last_user = user
+                        print(f"{prefix} {data['chat']}")
+
+                    elif channel == members_changed_channel:
+                        print("MEMBERS:", ", ".join(data))
                         last_user = None
 
             finally:
                 input_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await input_task
 
     except AiocometdException as error:
-        print("Encountered an error: " + str(error))
+        print(f"Encountered an error: {error}")
     except asyncio.CancelledError:
         pass
     finally:
         print("\nExiting...")
 
 
-async def input_publisher(client: Client, nickname: str,
-                          room_channel: str) -> None:
-    """Read text from stdin and publish it on the *room_channel*
+async def input_publisher(client: Client, nickname: str, room_channel: str) -> None:
+    """Read user input from stdin and publish it to the chat room.
 
-    :param client: A client object
-    :param nickname: The user's nickname
-    :param room_channel: The chat room's channel
+    Args:
+        client (Client): The active CometD client.
+        nickname (str): The user's nickname.
+        room_channel (str): The chat room channel name.
     """
     up_one_line = "\033[F"
     clear_line = "\033[K"
 
     while True:
         try:
-            # read from stdin
             message_text = await ainput("")
         except asyncio.CancelledError:
-            return
+            break
 
-        # clear the last printed line
+        # Clear previous input line
         print(up_one_line, end="")
         print(clear_line, end="", flush=True)
 
-        # publish the message on the room's channel
+        # Publish the user's message
         await client.publish(room_channel, {
             "user": nickname,
             "chat": message_text
@@ -113,30 +106,42 @@ async def input_publisher(client: Client, nickname: str,
 
 
 def get_arguments() -> Dict[str, Any]:
-    """Returns the argument's parsed from the command line"""
-    parser = argparse.ArgumentParser(description="CometD chat example client")
-    parser.add_argument("url", metavar="server_url", type=str,
-                        help="CometD server URL")
-    parser.add_argument("nickname", type=str, help="Chat nickname")
-    parser.add_argument("-c", "--connection_type", type=ConnectionType,
-                        choices=list(ConnectionType),
-                        default=ConnectionType.WEBSOCKET.value,
-                        help="Connection type")
+    """Parse command-line arguments for the chat client.
 
+    Returns:
+        Dict[str, Any]: Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description="CometD chat example client")
+    parser.add_argument("url", metavar="server_url", type=str, help="CometD server URL")
+    parser.add_argument("nickname", type=str, help="Chat nickname")
+    parser.add_argument(
+        "-c",
+        "--connection_type",
+        type=ConnectionType,
+        choices=list(ConnectionType),
+        default=ConnectionType.WEBSOCKET,
+        help="Connection type (default: WEBSOCKET)",
+    )
     return vars(parser.parse_args())
 
 
 def main() -> None:
-    """Starts the chat client application"""
+    """Start the CometD chat client application."""
     arguments = get_arguments()
 
-    loop = asyncio.get_event_loop()
-    chat_task = asyncio.ensure_future(chat_client(**arguments), loop=loop)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    chat_task = loop.create_task(chat_client(**arguments))
+
     try:
         loop.run_until_complete(chat_task)
     except KeyboardInterrupt:
         chat_task.cancel()
-        loop.run_until_complete(chat_task)
+        with suppress(asyncio.CancelledError):
+            loop.run_until_complete(chat_task)
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 
 if __name__ == "__main__":
