@@ -1,5 +1,5 @@
 """Type definitions"""
-from typing_utils import List, Union, Callable, Awaitable, Any, Dict
+from typing import List, Union, Callable, Awaitable, Any, Dict
 import ssl as ssl_module
 
 import aiohttp
