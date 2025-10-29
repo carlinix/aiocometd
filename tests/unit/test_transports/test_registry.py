@@ -41,7 +41,7 @@ class TestTransportFactoryFunctions(unittest.TestCase):
 
         with self.assertRaisesRegex(
             TransportInvalidOperation,
-            f"There is no transport for connection type {connection_type!r}",
+            f"There is no transport registered for connection type {connection_type!r}",
         ):
             create_transport(connection_type)
 

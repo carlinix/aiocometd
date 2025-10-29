@@ -1,110 +1,116 @@
-"""Transport related constants"""
-from enum import Enum, unique, auto
+"""Transport-related constants and definitions for CometD protocol."""
 
+from __future__ import annotations
+
+from enum import Enum, StrEnum, auto, unique
+from dataclasses import dataclass, asdict
+from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# Connection Types
+# ---------------------------------------------------------------------------
 
 @unique
-class ConnectionType(Enum):
-    """CometD Connection types"""
-    #: Long polling connection type
+class ConnectionType(StrEnum):
+    """CometD connection types."""
     LONG_POLLING = "long-polling"
-    #: Websocket connection type
     WEBSOCKET = "websocket"
 
 
-#: Connection type that all CometD server implementaions should support
-DEFAULT_CONNECTION_TYPE = ConnectionType.LONG_POLLING
-#: CometD meta channel prefix
-META_CHANNEL_PREFIX = "/meta/"
-#: CometD service channel prefix
-SERVICE_CHANNEL_PREFIX = "/service/"
+DEFAULT_CONNECTION_TYPE: ConnectionType = ConnectionType.LONG_POLLING
 
+# ---------------------------------------------------------------------------
+# Channel Prefixes
+# ---------------------------------------------------------------------------
+
+META_CHANNEL_PREFIX: str = "/meta/"
+SERVICE_CHANNEL_PREFIX: str = "/service/"
+
+# ---------------------------------------------------------------------------
+# Meta Channels
+# ---------------------------------------------------------------------------
 
 @unique
-class MetaChannel(str, Enum):
-    """CometD meta channel names"""
-    #: Handshake meta channel
-    HANDSHAKE = META_CHANNEL_PREFIX + "handshake"
-    #: Connect meta channel
-    CONNECT = META_CHANNEL_PREFIX + "connect"
-    #: Disconnect meta channel
-    DISCONNECT = META_CHANNEL_PREFIX + "disconnect"
-    #: Subscribe meta channel
-    SUBSCRIBE = META_CHANNEL_PREFIX + "subscribe"
-    #: Unsubscribe meta channel
-    UNSUBSCRIBE = META_CHANNEL_PREFIX + "unsubscribe"
+class MetaChannel(StrEnum):
+    """CometD meta channel names."""
+    HANDSHAKE = f"{META_CHANNEL_PREFIX}handshake"
+    CONNECT = f"{META_CHANNEL_PREFIX}connect"
+    DISCONNECT = f"{META_CHANNEL_PREFIX}disconnect"
+    SUBSCRIBE = f"{META_CHANNEL_PREFIX}subscribe"
+    UNSUBSCRIBE = f"{META_CHANNEL_PREFIX}unsubscribe"
 
+
+# ---------------------------------------------------------------------------
+# Transport State
+# ---------------------------------------------------------------------------
 
 @unique
 class TransportState(Enum):
-    """Describes a transport object's state"""
-    #: Transport is disconnected
+    """Describes a transport object's state."""
     DISCONNECTED = auto()
-    #: Connection terminated by the server
     SERVER_DISCONNECTED = auto()
-    #: Transport is trying to establish a connection
     CONNECTING = auto()
-    #: Transport is connected to the server
     CONNECTED = auto()
-    #: Transport is disconnecting from the server
     DISCONNECTING = auto()
 
 
-#: Handshake message template
-HANDSHAKE_MESSAGE = {
-    # mandatory
-    "channel": MetaChannel.HANDSHAKE,
-    "version": "1.0",
-    "supportedConnectionTypes": None,
-    # optional
-    "minimumVersion": "1.0",
-    "id": None
-}
+# ---------------------------------------------------------------------------
+# Message Templates
+# ---------------------------------------------------------------------------
 
-#: Connect message template
-CONNECT_MESSAGE = {
-    # mandatory
-    "channel": MetaChannel.CONNECT,
-    "clientId": None,
-    "connectionType": None,
-    # optional
-    "id": None
-}
+@dataclass(frozen=True, slots=True)
+class HandshakeMessage:
+    channel: MetaChannel = MetaChannel.HANDSHAKE
+    version: str = "1.0"
+    supportedConnectionTypes: Optional[list[ConnectionType]] = None
+    minimumVersion: str = "1.0"
+    id: Optional[str] = None
 
-#: Disconnect message template
-DISCONNECT_MESSAGE = {
-    # mandatory
-    "channel": MetaChannel.DISCONNECT,
-    "clientId": None,
-    # optional
-    "id": None
-}
 
-#: Subscribe message template
-SUBSCRIBE_MESSAGE = {
-    # mandatory
-    "channel": MetaChannel.SUBSCRIBE,
-    "clientId": None,
-    "subscription": None,
-    # optional
-    "id": None
-}
+@dataclass(frozen=True, slots=True)
+class ConnectMessage:
+    channel: MetaChannel = MetaChannel.CONNECT
+    clientId: Optional[str] = None
+    connectionType: Optional[ConnectionType] = None
+    id: Optional[str] = None
 
-#: Unsubscribe message template
-UNSUBSCRIBE_MESSAGE = {
-    # mandatory
-    "channel": MetaChannel.UNSUBSCRIBE,
-    "clientId": None,
-    "subscription": None,
-    # optional
-    "id": None
-}
 
-#: Publish message template
-PUBLISH_MESSAGE = {
-    # mandatory
-    "channel": None,
-    "clientId": None,
-    "data": None,
-    # optional
-    "id": None
-}
+@dataclass(frozen=True, slots=True)
+class DisconnectMessage:
+    channel: MetaChannel = MetaChannel.DISCONNECT
+    clientId: Optional[str] = None
+    id: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubscribeMessage:
+    channel: MetaChannel = MetaChannel.SUBSCRIBE
+    clientId: Optional[str] = None
+    subscription: Optional[str] = None
+    id: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class UnsubscribeMessage:
+    channel: MetaChannel = MetaChannel.UNSUBSCRIBE
+    clientId: Optional[str] = None
+    subscription: Optional[str] = None
+    id: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class PublishMessage:
+    channel: Optional[str] = None
+    clientId: Optional[str] = None
+    data: Optional[dict] = None
+    id: Optional[str] = None
+
+
+# Optionally expose ready-to-use template dicts
+HANDSHAKE_MESSAGE = asdict(HandshakeMessage())
+CONNECT_MESSAGE = asdict(ConnectMessage())
+DISCONNECT_MESSAGE = asdict(DisconnectMessage())
+SUBSCRIBE_MESSAGE = asdict(SubscribeMessage())
+UNSUBSCRIBE_MESSAGE = asdict(UnsubscribeMessage())
+PUBLISH_MESSAGE = asdict(PublishMessage())

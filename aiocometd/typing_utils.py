@@ -1,25 +1,28 @@
-"""Type definitions"""
-from typing import List, Union, Callable, Awaitable, Any, Dict
-import ssl as ssl_module
+"""Type definitions for aiocometd."""
 
-import aiohttp
+from __future__ import annotations
 
+import ssl
+from typing import Any, TypeAlias
+from collections.abc import Awaitable, Callable
+from aiohttp import Fingerprint
 from aiocometd.constants import ConnectionType
 
 
-#: Coroutine function
-CoroFunction = Callable[..., Awaitable[Any]]
-#: JSON object value
-JsonObject = Dict[str, Any]
-#: JSON serializer function
-JsonDumper = Callable[[JsonObject], str]
-#: JSON deserializer function
-JsonLoader = Callable[[str], JsonObject]
-#: Message payload (list of messages)
-Payload = List[JsonObject]
-#: Header values
-Headers = Dict[str, str]
-#: Connection type specification
-ConnectionTypeSpec = Union[ConnectionType, List[ConnectionType]]
-#: SSL validation mode
-SSLValidationMode = Union[ssl_module.SSLContext, aiohttp.Fingerprint, bool]
+# ---------------------------------------------------------------------------
+# Coroutine & JSON Type Aliases
+# ---------------------------------------------------------------------------
+
+CoroFunction: TypeAlias = Callable[..., Awaitable[Any]]
+JsonObject: TypeAlias = dict[str, Any]
+JsonDumper: TypeAlias = Callable[[JsonObject], str]
+JsonLoader: TypeAlias = Callable[[str], JsonObject]
+Payload: TypeAlias = list[JsonObject]
+Headers: TypeAlias = dict[str, str]
+
+# ---------------------------------------------------------------------------
+# Protocol-Specific Type Aliases
+# ---------------------------------------------------------------------------
+
+ConnectionTypeSpec: TypeAlias = ConnectionType | list[ConnectionType]
+SSLValidationMode: TypeAlias = ssl.SSLContext | Fingerprint | bool

@@ -1,107 +1,123 @@
-"""Exception types
+"""Exception types for aiocometd.
 
-Exception hierarchy::
-
+Exception hierarchy:
     AiocometdException
-        ClientError
-            ClientInvalidOperation
-        TransportError
-            TransportInvalidOperation
-            TransportTimeoutError
-            TransportConnectionClosed
-        ServerError
+        ├── ClientError
+        │     └── ClientInvalidOperation
+        └── TransportError
+              ├── TransportInvalidOperation
+              ├── TransportTimeoutError
+              ├── TransportConnectionClosed
+              └── ServerError
 """
-from typing import Optional, List, cast
 
+from __future__ import annotations
+
+from typing import Optional, List, cast
 from aiocometd import utils
 
 
 class AiocometdException(Exception):
-    """Base exception type.
+    """Base exception type for all aiocometd errors.
 
-    All exceptions of the package inherit from this class.
+    All custom exceptions in this package inherit from this class.
     """
 
 
+# ---------------------------------------------------------------------------
+# Transport-level exceptions
+# ---------------------------------------------------------------------------
+
 class TransportError(AiocometdException):
-    """Error during the transportation of messages"""
+    """Error raised during the transportation of messages."""
 
 
 class TransportInvalidOperation(TransportError):
-    """The requested operation can't be executed on the current state of the
-    transport"""
+    """Raised when the requested operation cannot be executed in the current transport state."""
 
 
 class TransportTimeoutError(TransportError):
-    """Transport timeout"""
+    """Raised when a transport operation exceeds its allowed timeout."""
 
 
 class TransportConnectionClosed(TransportError):
-    """The connection unexpectedly closed"""
+    """Raised when the transport connection closes unexpectedly."""
 
+
+# ---------------------------------------------------------------------------
+# Server-level exceptions
+# ---------------------------------------------------------------------------
 
 class ServerError(AiocometdException):
-    """CometD server side error"""
-    # pylint: disable=useless-super-delegation
-    def __init__(self, message: str, response: Optional[utils.JsonObject]) \
-            -> None:
-        """If the *response* contains an error field it gets parsed
-        according to the \
-        `specs <https://docs.cometd.org/current/reference/#_code_error_code>`_
+    """CometD server-side error.
 
-        :param message: Error description
-        :param response: Server response message
+    This exception is raised when the server responds with an error message. If the response contains an `error` field,
+    it is parsed according to the CometD specification.
+
+    See: https://docs.cometd.org/current/reference/#_code_error_code
+    """
+
+    def __init__(self, message: str, response: Optional[utils.JsonObject]) -> None:
+        """Initialize a ServerError.
+
+        Args:
+            message (str): A textual description of the error.
+            response (Optional[utils.JsonObject]): The server response message that triggered the error.
         """
         super().__init__(message, response)
 
-    # pylint: enable=useless-super-delegation
-
     @property
     def message(self) -> str:
-        """Error description"""
-        # pylint: disable=unsubscriptable-object
+        """Return the error description provided during initialization."""
         return cast(str, self.args[0])
-        # pylint: enable=unsubscriptable-object
 
     @property
     def response(self) -> Optional[utils.JsonObject]:
-        """Server response message"""
-        return cast(Optional[utils.JsonObject],
-                    self.args[1])  # pylint: disable=unsubscriptable-object
+        """Return the server response message, if available."""
+        return cast(Optional[utils.JsonObject], self.args[1])
 
     @property
     def error(self) -> Optional[str]:
-        """Error field in the :obj:`response`"""
+        """Return the raw `error` field from the server response, if present."""
         if self.response is None:
             return None
         return self.response.get("error")
 
     @property
     def error_code(self) -> Optional[int]:
-        """Error code part of the error code part of the `error\
-        <https://docs.cometd.org/current/reference/#_code_error_code>`_, \
-        message field"""
+        """Return the numeric error code extracted from the response.
+
+        Returns:
+            Optional[int]: The numeric code (e.g., 401, 403) if found in the error field, otherwise ``None``.
+        """
         return utils.get_error_code(self.error)
 
     @property
     def error_message(self) -> Optional[str]:
-        """Description part of the `error\
-        <https://docs.cometd.org/current/reference/#_code_error_code>`_, \
-        message field"""
+        """Return the descriptive part of the error field.
+
+        Returns:
+            Optional[str]: The human-readable error message if present, otherwise ``None``.
+        """
         return utils.get_error_message(self.error)
 
     @property
     def error_args(self) -> Optional[List[str]]:
-        """Arguments part of the `error\
-        <https://docs.cometd.org/current/reference/#_code_error_code>`_, \
-        message field"""
+        """Return the list of argument values included in the error field.
+
+        Returns:
+            Optional[List[str]]: List of arguments extracted from the error field, or ``None`` if not applicable.
+        """
         return utils.get_error_args(self.error)
 
 
+# ---------------------------------------------------------------------------
+# Client-level exceptions
+# ---------------------------------------------------------------------------
+
 class ClientError(AiocometdException):
-    """ComtedD client side error"""
+    """CometD client-side error."""
 
 
 class ClientInvalidOperation(ClientError):
-    """The requested operation can't be executed on the current state of the
-    client"""
+    """Raised when a client operation cannot be performed in its current state."""
