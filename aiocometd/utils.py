@@ -9,21 +9,19 @@ from aiocometd.constants import META_CHANNEL_PREFIX, SERVICE_CHANNEL_PREFIX
 from aiocometd.typing_utils import CoroFunction, JsonObject
 
 
-def defer(coro_func: CoroFunction, delay: Union[int, float, None] = None, *,
-          loop: Optional[asyncio.AbstractEventLoop] = None) -> CoroFunction:
+def defer(coro_func: CoroFunction, delay: Union[int, float, None] = None) -> CoroFunction:
     """Returns a coroutine function that will defer the call to the given
     *coro_func* by *delay* seconds
 
     :param coro_func: A coroutine function
     :param delay: Delay in seconds
-    :param loop: An event loop
     :return: Coroutine function wrapper
     """
     @wraps(coro_func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:  \
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # pylint: disable=missing-docstring
         if delay:
-            await asyncio.sleep(delay, loop=loop)  # type: ignore
+            await asyncio.sleep(delay)
         return await coro_func(*args, **kwargs)
 
     return wrapper
