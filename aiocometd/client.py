@@ -7,7 +7,6 @@ import json
 import logging
 import reprlib
 from collections import abc
-from contextlib import suppress
 from types import TracebackType
 from typing import (
     Any,
