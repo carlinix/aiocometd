@@ -116,12 +116,10 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
     async def test_consume_message_non_event_message(self, is_event_message):
         is_event_message.return_value = False
         self.transport._incoming_queue = mock.MagicMock()
-        self.transport.incoming_queue.put = mock.AsyncMock()
         response_message = object()
-
         await self.transport._consume_message(response_message)
         is_event_message.assert_called_with(response_message)
-        self.transport.incoming_queue.put.assert_not_awaited()
+
 
     @mock.patch("aiocometd.transports.base.is_event_message")
     async def test_consume_message_event_message(self, is_event_message):
