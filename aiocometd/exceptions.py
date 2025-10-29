@@ -11,7 +11,7 @@ Exception hierarchy::
             TransportConnectionClosed
         ServerError
 """
-from typing import Optional, List, cast
+from typing_utils import Optional, List, cast
 
 from aiocometd import utils
 

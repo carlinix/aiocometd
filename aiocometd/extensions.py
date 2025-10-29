@@ -1,8 +1,8 @@
 """Extension classes"""
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing_utils import Optional
 
-from aiocometd.typing import Payload, Headers
+from aiocometd.typing_utils import Payload, Headers
 
 
 class Extension(ABC):

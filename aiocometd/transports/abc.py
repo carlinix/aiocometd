@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Set, Optional, List
 
 from aiocometd.constants import ConnectionType, TransportState
-from aiocometd.typing import JsonObject
+from aiocometd.typing_utils import JsonObject
 
 
 class Transport(ABC):

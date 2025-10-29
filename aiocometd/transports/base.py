@@ -14,7 +14,7 @@ from aiocometd.constants import ConnectionType, MetaChannel, TransportState, \
 from aiocometd.utils import defer, is_matching_response, \
     is_auth_error_message, is_event_message
 from aiocometd.exceptions import TransportInvalidOperation, TransportError
-from aiocometd.typing import SSLValidationMode, JsonObject, JsonLoader, \
+from aiocometd.typing_utils import SSLValidationMode, JsonObject, JsonLoader, \
     JsonDumper, Headers, Payload
 from aiocometd.extensions import Extension, AuthExtension
 from aiocometd.transports.abc import Transport
@@ -45,7 +45,7 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
                  json_dumps: JsonDumper = json.dumps,
                  json_loads: JsonLoader = json.loads,
                  reconnect_advice: Optional[JsonObject] = None,
-                 loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+                 ) -> None:
         """
         :param url: CometD service url
         :param incoming_queue: Queue for consuming incoming event
@@ -68,10 +68,6 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
         :func:`json.loads`
         :param reconnect_advice: Initial reconnect advice
         :param http_session: HTTP client session
-        :param loop: Event :obj:`loop <asyncio.BaseEventLoop>` used to
-                     schedule tasks. If *loop* is ``None`` then
-                     :func:`asyncio.get_event_loop` is used to get the default
-                     event loop.
         """
         #: queue for consuming incoming event messages
         self.incoming_queue = incoming_queue
@@ -79,8 +75,6 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
         self._url = url
         #: http session
         self._http_session = http_session
-        #: event loop used to schedule tasks
-        self._loop = loop or asyncio.get_event_loop()
         #: clinet id value assigned by the server
         self._client_id = client_id
         #: message id which should be unique for every message during a client
@@ -110,6 +104,14 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
         self._json_dumps = json_dumps
         #: Function for JSON deserialization
         self._json_loads = json_loads
+
+        # Robust event loop handling
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No active loop, safe fallback for sync contexts (e.g., unit tests)
+            self._loop = asyncio.new_event_loop()
+            LOGGER.debug("Created a new event loop for TransportBase (no running loop detected).")
 
     @property
     def connection_type(self) -> ConnectionType:  # pragma: no cover
@@ -432,7 +434,7 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
         :param coro: Coroutine
         :return: Future
         """
-        self._connect_task = asyncio.ensure_future(coro, loop=self._loop)
+        self._connect_task = asyncio.ensure_future(coro)
         self._connect_task.add_done_callback(self._connect_done)
         return self._connect_task
 
@@ -538,14 +540,14 @@ class TransportBase(Transport):  # pylint: disable=too-many-instance-attributes
         if reconnect_advice == "handshake":
             handshake_coro = defer(self.handshake,
                                    delay=reconnect_timeout,
-                                   loop=self._loop)
+                                   )
             self._start_connect_task(handshake_coro([self.connection_type]))
 
         # do a connect operation if advised
         elif reconnect_advice == "retry":
             connect_coro = defer(self._connect,
                                  delay=reconnect_timeout,
-                                 loop=self._loop)
+                                 )
             self._start_connect_task(connect_coro())
 
         # there is not reconnect advice from the server or its value

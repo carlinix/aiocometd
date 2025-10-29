@@ -10,7 +10,7 @@ import aiohttp.client_ws
 
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportError, TransportConnectionClosed
-from aiocometd.typing import JsonObject
+from aiocometd.typing_utils import JsonObject
 from aiocometd.transports.registry import register_transport
 from aiocometd.transports.base import TransportBase, Payload, Headers
 
@@ -124,7 +124,7 @@ class WebSocketTransport(TransportBase):
         :return: A future which will yield the server's response message to the
         outgoing *payload*
         """
-        future: "asyncio.Future[JsonObject]" = asyncio.Future(loop=self._loop)
+        future: "asyncio.Future[JsonObject]" = asyncio.Future()
         self._pending_exhanges[payload[0]["id"]] = future
         return future
 

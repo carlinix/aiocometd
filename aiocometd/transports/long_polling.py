@@ -7,7 +7,7 @@ import aiohttp
 
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportError
-from aiocometd.typing import JsonObject
+from aiocometd.typing_utils import JsonObject
 from aiocometd.transports.registry import register_transport
 from aiocometd.transports.base import TransportBase, Payload, Headers
 
@@ -22,7 +22,7 @@ class LongPollingTransport(TransportBase):
         super().__init__(**kwargs)
 
         #: semaphore to limit the number of concurrent HTTP connections to 2
-        self._http_semaphore = asyncio.Semaphore(2, loop=self._loop)
+        self._http_semaphore = asyncio.Semaphore(2)
 
     async def _send_final_payload(self, payload: Payload, *,
                                   headers: Headers) -> JsonObject:
