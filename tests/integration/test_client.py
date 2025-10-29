@@ -1,7 +1,6 @@
-import asyncio
-import os
+
 import unittest
-import aiohttp
+
 
 from aiocometd import Client, ConnectionType
 from aiocometd.exceptions import TransportTimeoutError, ServerError
