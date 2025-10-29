@@ -1,6 +1,4 @@
 import unittest
-from unittest import mock
-from aiohttp import client_exceptions
 
 from aiocometd.transports.long_polling import LongPollingTransport
 from aiocometd.constants import ConnectionType
@@ -8,19 +6,10 @@ from aiocometd.exceptions import TransportError
 
 
 from unittest import mock
-from typing import Any
 from aiohttp import client_exceptions
 
 
 def make_aiohttp_post_raises(exc: Exception) -> mock.MagicMock:
-    """Cria um mock de `aiohttp.ClientSession.post` que lança uma exceção simulada.
-
-    Args:
-        exc: Exceção a ser lançada ao tentar fazer POST.
-
-    Returns:
-        Mock configurado que simula o comportamento de `session.post` com falha.
-    """
     post_ctx = mock.MagicMock()
     post_ctx.__aenter__ = mock.AsyncMock(side_effect=exc)
     post_ctx.__aexit__ = mock.AsyncMock(return_value=None)
@@ -29,42 +18,13 @@ def make_aiohttp_post_raises(exc: Exception) -> mock.MagicMock:
     return session_post
 
 def make_aiohttp_post_mock(response_mock) -> mock.MagicMock:
-    """Cria um mock de `aiohttp.ClientSession.post` que retorna um contexto assíncrono.
-
-    Args:
-        response_mock: Objeto simulando a resposta (`aiohttp.ClientResponse`).
-
-    Returns:
-        Mock configurado que suporta `async with`.
-    """
     post_ctx = mock.MagicMock()
     post_ctx.__aenter__ = mock.AsyncMock(return_value=response_mock)
     post_ctx.__aexit__ = mock.AsyncMock(return_value=None)
     session_post = mock.MagicMock(return_value=post_ctx)
     return session_post
 
-def make_aiohttp_post_mock(response: Any) -> mock.MagicMock:
-    """Cria um mock compatível com o contexto `async with session.post()` do aiohttp.
-
-    Args:
-        response: Objeto a ser retornado ao entrar no contexto (geralmente um mock de resposta).
-
-    Returns:
-        Mock configurado para substituir `aiohttp.ClientSession.post`.
-    """
-    post_ctx = mock.MagicMock()
-    post_ctx.__aenter__ = mock.AsyncMock(return_value=response)
-    post_ctx.__aexit__ = mock.AsyncMock(return_value=None)
-
-    session_post = mock.MagicMock(return_value=post_ctx)
-    return session_post
-
 def make_async_semaphore_mock() -> mock.AsyncMock:
-    """Cria um mock de semáforo assíncrono (`asyncio.Semaphore`) compatível com `async with`.
-
-    Returns:
-        Mock de semáforo com `__aenter__`/`__aexit__` assíncronos.
-    """
     sem = mock.AsyncMock()
     sem.__aenter__.return_value = None
     sem.__aexit__.return_value = None

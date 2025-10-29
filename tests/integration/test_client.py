@@ -3,7 +3,7 @@ import unittest
 
 
 from aiocometd import Client, ConnectionType
-from aiocometd.exceptions import TransportTimeoutError, ServerError
+from aiocometd.exceptions import TransportTimeoutError
 from tests.integration.helpers import DockerContainer
 
 

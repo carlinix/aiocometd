@@ -3,18 +3,9 @@ import unittest
 from unittest import mock
 
 from aiocometd.transports.base import TransportBase
-from aiocometd.constants import (
-    ConnectionType,
-    MetaChannel,
-    TransportState,
-    CONNECT_MESSAGE,
-    SUBSCRIBE_MESSAGE,
-    DISCONNECT_MESSAGE,
-    PUBLISH_MESSAGE,
-    UNSUBSCRIBE_MESSAGE,
-)
+from aiocometd.constants import ConnectionType
 from aiocometd.extensions import Extension, AuthExtension
-from aiocometd.exceptions import TransportInvalidOperation, TransportError
+from aiocometd.exceptions import TransportInvalidOperation
 
 
 class TransportBaseImpl(TransportBase):
@@ -47,9 +38,7 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
         loop = object()
 
         with self.assertRaises((TypeError, TransportInvalidOperation)) as ctx:
-            TransportBaseImpl(
-                url=None, incoming_queue=None, http_session=None, loop=loop
-            )
+            TransportBaseImpl(url=None, incoming_queue=None, http_session=None, loop=loop) # type: ignore
 
         self.assertIn("loop", str(ctx.exception))
 

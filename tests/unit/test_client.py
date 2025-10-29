@@ -206,8 +206,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._verify_response.assert_called_with(response)
         self.client._pick_connection_type.assert_called_with(
             response["supportedConnectionTypes"])
-        log_message = ("INFO:aiocometd.client:"
-                       "Connection types supported by the server: {!r}"
+        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
                        .format(response["supportedConnectionTypes"]))
         self.assertEqual(log.output, [log_message])
 
@@ -229,8 +228,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._get_http_session = mock.AsyncMock(return_value=http_session)
 
         with self.assertRaisesRegex(ClientError,
-                                    "None of the connection types offered "
-                                    "by the server are supported."):
+                                    "Server offers no supported connection types."):
             with self.assertLogs("aiocometd.client", "DEBUG") as log:
                 await self.client._negotiate_transport()
 
@@ -249,8 +247,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._pick_connection_type.assert_called_with(
             response["supportedConnectionTypes"])
         transport.close.assert_called()
-        log_message = ("INFO:aiocometd.client:"
-                       "Connection types supported by the server: {!r}"
+        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
                        .format(response["supportedConnectionTypes"]))
         self.assertEqual(log.output, [log_message])
 
@@ -320,8 +317,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._pick_connection_type.assert_called_with(
             response["supportedConnectionTypes"])
         transport1.close.assert_called()
-        log_message = ("INFO:aiocometd.client:"
-                       "Connection types supported by the server: {!r}"
+        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
                        .format(response["supportedConnectionTypes"]))
         self.assertEqual(log.output, [log_message])
 
@@ -344,10 +340,9 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._verify_response.assert_called_with(connect_result)
         self.assertEqual(
             log.output,
-            ["INFO:aiocometd.client:Opening client with connection "
-             "types {!r} ..."
+            ["INFO:aiocometd.client:Opening client with connection types {!r}"
              .format([t.value for t in self.client._connection_types]),
-             "INFO:aiocometd.client:Client opened with connection_type {!r}"
+             "INFO:aiocometd.client:Client opened using connection type {!r}"
              .format(self.client.connection_type.value)])
 
     async def test_open_if_already_open(self):
@@ -378,8 +373,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._incoming_queue = asyncio.Queue()
         self.client._incoming_queue.put_nowait(object())
         expected_log = [
-            "WARNING:aiocometd.client:Closing client while {} messages are "
-            "still pending...".format(self.client.pending_count),
+            "WARNING:aiocometd.client:Closing client with {} pending messages...".format(self.client.pending_count),
             "INFO:aiocometd.client:Client closed."
         ]
 
@@ -474,7 +468,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._check_server_disconnected = mock.AsyncMock()
 
         with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Can't send subscribe request while, the client is closed."):
+                                    "Cannot subscribe while client is closed."):
             await self.client.subscribe("channel1")
 
         self.client._check_server_disconnected.assert_not_called()
@@ -528,8 +522,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._check_server_disconnected = mock.AsyncMock()
 
         with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Can't send unsubscribe request while, "
-                                    "the client is closed."):
+                                    "Cannot unsubscribe while client is closed."):
             await self.client.unsubscribe("channel1")
 
         self.client._check_server_disconnected.assert_not_called()
@@ -579,8 +572,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._check_server_disconnected = mock.AsyncMock()
 
         with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Can't publish data while, "
-                                    "the client is closed."):
+                                    "Cannot publish while client is closed."):
             await self.client.publish("channel1", {})
 
         self.client._check_server_disconnected.assert_not_called()
@@ -714,8 +706,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._incoming_queue = None
 
         with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "The client is closed and there are "
-                                    "no pending messages."):
+                                    "Client is closed and no messages remain."):
             await self.client.receive()
 
     async def test_receive_on_closed_and_pending_messages(self):
