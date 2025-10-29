@@ -3,7 +3,7 @@ import re
 import asyncio
 from functools import wraps
 from http import HTTPStatus
-from typing_utils import Union, Optional, List, Any
+from typing import Union, Optional, List, Any
 
 from aiocometd.constants import META_CHANNEL_PREFIX, SERVICE_CHANNEL_PREFIX
 from aiocometd.typing_utils import CoroFunction, JsonObject
