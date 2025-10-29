@@ -1,13 +1,45 @@
 import asyncio
-
-from asynctest import TestCase, TestSuite
+import os
+import unittest
+import aiohttp
 
 from aiocometd import Client, ConnectionType
-from aiocometd.exceptions import TransportTimeoutError
+from aiocometd.exceptions import TransportTimeoutError, ServerError
 from tests.integration.helpers import DockerContainer
 
 
-class BaseTestCase(TestCase):
+import aiohttp, asyncio
+
+async def wait_for_cometd_ready(url="http://localhost:9999/cometd/handshake", timeout=60):
+    """Waits until the CometD server responds successfully to a handshake request."""
+    payload = [{
+        "version": "1.0",
+        "minimumVersion": "1.0",
+        "channel": "/meta/handshake",
+        "supportedConnectionTypes": ["long-polling", "websocket"],
+        "id": "1"
+    }]
+
+    async with aiohttp.ClientSession() as s:
+        for attempt in range(timeout):
+            try:
+                async with s.post(url, json=payload) as r:
+                    if r.status == 200:
+                        try:
+                            data = await r.json()
+                            if data and data[0].get("successful", False):
+                                print(f"✅ CometD ready (handshake OK after {attempt+1}s)")
+                                return True
+                        except Exception:
+                            pass
+            except aiohttp.ClientError:
+                pass
+
+            await asyncio.sleep(1)
+
+    raise TimeoutError("CometD did not recover in time")
+
+class BaseTestCase(unittest.IsolatedAsyncioTestCase):
     #: name of the docker image containing the CometD demo services
     IMAGE_NAME = "robertmrk/cometd-demos:alpine"
     #: a name for the container
@@ -51,7 +83,12 @@ class BaseTestCase(TestCase):
     def tearDownClass(cls):
         cls.container.stop()
 
-
+async def drain(client, timeout=1.0):
+    while client.pending_count > 0:
+        try:
+            await asyncio.wait_for(client.receive(), timeout=timeout)
+        except asyncio.TimeoutError:
+            break
 class TestChat(BaseTestCase):
     async def test_single_client_chat(self):
         # create client
@@ -175,6 +212,9 @@ class TestChat(BaseTestCase):
                 "data": [self.USER_NAME1, self.USER_NAME2],
                 "channel": self.MEMBERS_CHANGED_CHANNEL
             })
+
+            await drain(client1)
+            await drain(client2)
 
 
 class TestTimeoutDetection(BaseTestCase):
@@ -302,7 +342,7 @@ class TestErrorRecoveryWebsocket(TestErrorRecovery):
 
 
 def load_tests(loader, tests, pattern):
-    suite = TestSuite()
+    suite = unittest.TestSuite()
     cases = (
         TestChatLongPolling,
         TestChatWebsocket,
