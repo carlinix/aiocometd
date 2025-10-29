@@ -1,9 +1,15 @@
-"""Websocket transport class definition"""
+"""WebSocket transport class definition.
+
+Implements a CometD transport over WebSocket. This class provides asynchronous
+message sending, receiving, and exchange tracking between the client and server.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import logging
 from contextlib import suppress
-from typing import Callable, Optional, AsyncContextManager, Any, Awaitable, \
-    cast, Dict
+from typing import Any, Awaitable, Callable, Dict, Optional, cast, AsyncContextManager
 
 import aiohttp
 import aiohttp.client_ws
@@ -14,67 +20,65 @@ from aiocometd.typing_utils import JsonObject
 from aiocometd.transports.registry import register_transport
 from aiocometd.transports.base import TransportBase, Payload, Headers
 
-
 LOGGER = logging.getLogger(__name__)
-#: Asynchronous factory function of ClientSessions
+
+#: Asynchronous factory function that returns an aiohttp.ClientSession
 AsyncSessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
-#: Web socket type
+#: WebSocket client response type alias
 WebSocket = aiohttp.client_ws.ClientWebSocketResponse
-#: Context manager type managing a WebSocket
+#: Asynchronous context manager for a WebSocket
 WebSocketContextManager = AsyncContextManager[WebSocket]
 
 
-class WebSocketFactory:  # pylint: disable=too-few-public-methods
-    """Helper class to create asynchronous callable objects, that return
-    WebSocket objects
+class WebSocketFactory:
+    """Factory class for creating and managing aiohttp WebSocket connections.
 
-    This class allows the usage of WebSocket objects without context blocks
+    This helper allows the creation of reusable WebSocket objects without explicit
+    context-manager syntax. It ensures proper cleanup when connections are closed.
     """
-    def __init__(self, http_session: aiohttp.ClientSession):
-        """
-        :param http_session: HTTP session
+
+    def __init__(self, http_session: aiohttp.ClientSession) -> None:
+        """Initialize the factory with a given HTTP session.
+
+        Args:
+            http_session: The aiohttp client session used to create WebSocket connections.
         """
         self._http_session = http_session
         self._context: Optional[WebSocketContextManager] = None
         self._socket: Optional[WebSocket] = None
 
     async def close(self) -> None:
-        """Close the WebSocket"""
+        """Close any active WebSocket connection."""
         with suppress(Exception):
             await self._exit()
 
     async def __call__(self, *args: Any, **kwargs: Any) -> WebSocket:
-        """Create a new WebSocket object or return a previously created one
-        if it's not closed
+        """Create or reuse an existing WebSocket connection.
 
-        :param args: positional arguments for the ws_connect function
-        :param kwargs: keyword arguments for the ws_connect function
-        :return: Websocket object
+        Args:
+            *args: Positional arguments for `aiohttp.ClientSession.ws_connect`.
+            **kwargs: Keyword arguments for `aiohttp.ClientSession.ws_connect`.
+
+        Returns:
+            The active WebSocket object.
         """
-        # if a the factory object already exists and if it's in closed state
-        # exit the context manager and clear the references
+        # Clean up a previously closed socket
         if self._socket is not None and self._socket.closed:
             await self._exit()
 
-        # if there is no factory object, then create it and enter the \
-        # context manager to initialize it
+        # Create a new connection if no valid socket exists
         if self._socket is None:
             self._socket = await self._enter(*args, **kwargs)
 
         return self._socket
 
     async def _enter(self, *args: Any, **kwargs: Any) -> WebSocket:
-        """Enter WebSocket context
-
-        :param args: positional arguments for the ws_connect function
-        :param kwargs: keyword arguments for the ws_connect function
-        :return: Websocket object
-        """
+        """Enter the WebSocket context and return a connected socket."""
         self._context = self._http_session.ws_connect(*args, **kwargs)
         return await self._context.__aenter__()
 
     async def _exit(self) -> None:
-        """Exit WebSocket context"""
+        """Exit the WebSocket context, closing the connection."""
         if self._context:
             await self._context.__aexit__(None, None, None)
             self._socket = self._context = None
@@ -82,191 +86,166 @@ class WebSocketFactory:  # pylint: disable=too-few-public-methods
 
 @register_transport(ConnectionType.WEBSOCKET)
 class WebSocketTransport(TransportBase):
-    """WebSocket type transport"""
+    """WebSocket transport implementation for CometD communication."""
 
-    def __init__(self, **kwargs: Any):
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize the WebSocket transport."""
         super().__init__(**kwargs)
-        #: factory for creating websockets
         self._socket_factory = WebSocketFactory(self._http_session)
-        #: pending message exchanges between the client and server,
-        #: the request message's id is used as a key
-        self._pending_exchanges: Dict[int, "asyncio.Future[JsonObject]"] \
-            = dict()
-        #: task for receiving incoming messages
-        self._receive_task: Optional["asyncio.Task[None]"] = None
+        self._pending_exchanges: Dict[int, asyncio.Future[JsonObject]] = {}
+        self._receive_task: Optional[asyncio.Task[None]] = None
 
+    # -------------------------------------------------------------------------
+    # Socket management
+    # -------------------------------------------------------------------------
     async def _reset_socket(self) -> None:
-        """Close the socket factory and recreate it"""
+        """Close and recreate the WebSocket factory."""
         await self._socket_factory.close()
         self._socket_factory = WebSocketFactory(self._http_session)
 
     async def _get_socket(self, headers: Headers) -> WebSocket:
-        """Factory function for creating a websocket object
+        """Obtain or create a WebSocket connection.
 
-        :param headers: Headers to send
-        :return: Websocket object
+        Args:
+            headers: HTTP headers to send during connection upgrade.
+
+        Returns:
+            The active WebSocket object.
         """
         return await self._socket_factory(
             self.endpoint,
             ssl=self.ssl,
             headers=headers,
             receive_timeout=self.request_timeout,
-            autoping=True)
+            autoping=True,
+        )
 
-    def _create_exchange_future(self, payload: Payload) \
-            -> "asyncio.Future[JsonObject]":
-        """Create a future which represents an exchange of messages between
-        the server and client
+    # -------------------------------------------------------------------------
+    # Message exchange
+    # -------------------------------------------------------------------------
+    def _create_exchange_future(self, payload: Payload) -> asyncio.Future[JsonObject]:
+        """Create a future representing a client-server message exchange.
 
-        The created future will be associated with the id of the first message
-        in the payload.
-        :param payload: The payload sent by the client
-        :return: A future which will yield the server's response message to the
-        outgoing *payload*
+        The first message's ID in the payload is used as the key to resolve responses.
+
+        Args:
+            payload: Outgoing payload sent to the server.
+
+        Returns:
+            A future that will yield the server's response message.
         """
-        future: "asyncio.Future[JsonObject]" = asyncio.Future()
+        future: asyncio.Future[JsonObject] = asyncio.Future()
         self._pending_exchanges[payload[0]["id"]] = future
         return future
 
     def _set_exchange_results(self, response_payload: Payload) -> None:
-        """Set the result of all the pending message exchange futures for which
-        we can find a response in the payload
-
-        :param response_payload: Response payload
-        """
-        # iterate over all incoming messages
+        """Resolve pending exchange futures with matching response messages."""
         for response_message in response_payload:
-            # if the incoming message has an id (otherwise it's not a response)
-            if "id" in response_message:
-                message_id = response_message["id"]
-                # if the message id is associated with any pending exchange
-                if message_id in self._pending_exchanges:
-                    # remove the exchange from the pending exchanges
-                    exchange = self._pending_exchanges.pop(message_id)
-                    # if the future is not completed yet then set its result
-                    if not exchange.done():
-                        exchange.set_result(response_message)
+            if "id" not in response_message:
+                continue
+            message_id = response_message["id"]
+            if message_id in self._pending_exchanges:
+                exchange = self._pending_exchanges.pop(message_id)
+                if not exchange.done():
+                    exchange.set_result(response_message)
 
     def _set_exchange_errors(self, error: Exception) -> None:
-        """Set the *error* as the exception for all pending exchanges
-
-        :param error: An exception
-        """
-        # set the exception for all the exchanges
+        """Reject all pending exchanges with the given error."""
         for exchange in self._pending_exchanges.values():
             if not exchange.done():
                 exchange.set_exception(error)
-        # clear the pending exchanges
         self._pending_exchanges.clear()
 
-    async def _send_final_payload(self, payload: Payload, *,
-                                  headers: Headers) -> JsonObject:
+    # -------------------------------------------------------------------------
+    # Send and receive
+    # -------------------------------------------------------------------------
+    async def _send_final_payload(self, payload: Payload, *, headers: Headers) -> JsonObject:
+        """Send the finalized payload over WebSocket.
+
+        This method handles connection resets and reconnections on failure.
+
+        Args:
+            payload: List of messages to send.
+            headers: HTTP headers for the WebSocket connection.
+
+        Returns:
+            The response message corresponding to the first message in the payload.
+
+        Raises:
+            TransportError: If the payload cannot be sent.
+        """
         try:
             try:
-                # try to send the payload on the socket which might have
-                # been closed since the last time it was used
                 socket = await self._get_socket(headers)
                 return await self._send_socket_payload(socket, payload)
             except asyncio.TimeoutError:
-                # reset the socket factory since after a timeout error
-                # it becomes invalid
                 await self._reset_socket()
                 raise
             except TransportConnectionClosed:
-                # if the socket was indeed closed, try to reopen the socket
-                # and send the payload, since the connection could've
-                # normalised since the last network problem
                 socket = await self._get_socket(headers)
                 return await self._send_socket_payload(socket, payload)
         except aiohttp.client_exceptions.ClientError as error:
-            LOGGER.warning("Failed to send payload, %s", error)
+            LOGGER.warning("Failed to send payload: %s", error)
             raise TransportError(str(error)) from error
 
-    async def _send_socket_payload(self, socket: WebSocket,
-                                   payload: Payload) -> JsonObject:
-        """Send *payload* to the server on the given *socket*
-
-        :param socket: WebSocket object
-        :param payload: A message or a list of messages
-        :return: Response payload
-        :raises TransportError: When the request fails.
-        :raises TransportConnectionClosed: When the *socket* receives a CLOSE \
-        message instead of the expected response
-        """
-        # create a future for the exchange of messages
+    async def _send_socket_payload(self, socket: WebSocket, payload: Payload) -> JsonObject:
+        """Send a payload through an open WebSocket and await its response."""
         future = self._create_exchange_future(payload)
         try:
-            # send the outgoing payload
             await socket.send_json(payload, dumps=self._json_dumps)
         except Exception as error:
-            # set the error as the result for all pending exchanges
             self._set_exchange_errors(error)
             raise
 
-        # make sure the receive task is running
         self._start_receive_task(socket)
-        # await and return the response of the server
         return await future
 
+    # -------------------------------------------------------------------------
+    # Receiving loop
+    # -------------------------------------------------------------------------
     def _start_receive_task(self, socket: WebSocket) -> None:
-        """Start the task which receives messages from the *socket* if it's
-        not already running
-
-        :param socket: A Websocket object
-        """
-        # if the receive task is not running then start it
+        """Ensure the background receive task is running."""
         if self._receive_task is None:
             self._receive_task = self._loop.create_task(self._receive(socket))
             self._receive_task.add_done_callback(self._receive_done)
 
     async def _receive(self, socket: WebSocket) -> None:
-        """Consume the incomming messages on the given *socket*
-
-        :param socket: A Websocket object
-        """
-        # receive responses from the server and consume them
+        """Continuously receive messages from the WebSocket connection."""
         try:
             while True:
                 response = await socket.receive()
                 if response.type == aiohttp.WSMsgType.CLOSE:
-                    raise TransportConnectionClosed("Received CLOSE message "
-                                                    "on the factory.")
-                # parse the response payload
+                    raise TransportConnectionClosed("Received CLOSE message from server.")
+
                 try:
-                    response_payload \
-                        = cast(Payload, response.json(loads=self._json_loads))
+                    response_payload = cast(Payload, response.json(loads=self._json_loads))
                 except TypeError:
-                    raise TransportError("Received invalid response from the "
-                                         "server.")
+                    raise TransportError("Received invalid JSON payload from server.") from None
 
-                # consume all event messages in the payload
                 await self._consume_payload(response_payload)
-
-                # set results of matching exchanges
                 self._set_exchange_results(response_payload)
         except Exception as error:
-            # set the error as the result for all pending exchanges
             self._set_exchange_errors(error)
             raise
 
-    def _receive_done(self, future: "asyncio.Task[None]") -> None:
-        """Consume the results of the *future*
-
-        :param future: A :obj:`_receive` future
-        """
-        # extract the result of the future
+    def _receive_done(self, future: asyncio.Task[None]) -> None:
+        """Callback executed when the receive loop terminates."""
         try:
             result = future.result()
         except Exception as error:  # pylint: disable=broad-except
             result = error
-        # clear the receive task
-        self._receive_task = None
-        LOGGER.debug("Recevie task finished with: %r", result)
 
+        self._receive_task = None
+        LOGGER.debug("Receive task finished with: %r", result)
+
+    # -------------------------------------------------------------------------
+    # Cleanup
+    # -------------------------------------------------------------------------
     async def close(self) -> None:
-        # cancel the receive task if it exists and wait for its completeion
+        """Cancel the receive loop, close the socket, and release resources."""
         if self._receive_task is not None and not self._receive_task.done():
             self._receive_task.cancel()
             await asyncio.wait([self._receive_task])
+
         await self._socket_factory.close()
         await super().close()
