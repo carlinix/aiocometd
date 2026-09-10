@@ -10,6 +10,8 @@ Unreleased
 - Replace Travis CI and tox with a GitHub Actions Python 3.11-3.14 matrix
 - Add strict distribution metadata, wheel-content, and clean-install smoke
   checks to continuous integration
+- Add an opt-in, tag-driven release workflow for PyPI, Google Artifact
+  Registry, and GitHub releases
 - Replace Flake8 and Pylint with Ruff linting and formatting
 - Stop creating unmanaged asyncio event loops during transport construction
 
