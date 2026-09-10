@@ -3,7 +3,7 @@
 import argparse
 import asyncio
 from contextlib import suppress
-from typing import Any, Dict
+from typing import Any
 
 from aioconsole import ainput  # type: ignore
 
@@ -33,20 +33,24 @@ async def chat_client(url: str, nickname: str, connection_type: ConnectionType) 
             await client.subscribe(members_changed_channel)
 
             # Announce presence
-            await client.publish(room_channel, {
-                "user": nickname,
-                "membership": "join",
-                "chat": f"{nickname} has joined"
-            })
+            await client.publish(
+                room_channel,
+                {
+                    "user": nickname,
+                    "membership": "join",
+                    "chat": f"{nickname} has joined",
+                },
+            )
 
             # Add user to the members list
-            await client.publish(members_channel, {
-                "user": nickname,
-                "room": room_channel
-            })
+            await client.publish(
+                members_channel, {"user": nickname, "room": room_channel}
+            )
 
             # Start background task for user input
-            input_task = asyncio.create_task(input_publisher(client, nickname, room_channel))
+            input_task = asyncio.create_task(
+                input_publisher(client, nickname, room_channel)
+            )
             last_user = None
 
             try:
@@ -99,13 +103,10 @@ async def input_publisher(client: Client, nickname: str, room_channel: str) -> N
         print(clear_line, end="", flush=True)
 
         # Publish the user's message
-        await client.publish(room_channel, {
-            "user": nickname,
-            "chat": message_text
-        })
+        await client.publish(room_channel, {"user": nickname, "chat": message_text})
 
 
-def get_arguments() -> Dict[str, Any]:
+def get_arguments() -> dict[str, Any]:
     """Parse command-line arguments for the chat client.
 
     Returns:
@@ -127,21 +128,8 @@ def get_arguments() -> Dict[str, Any]:
 
 def main() -> None:
     """Start the CometD chat client application."""
-    arguments = get_arguments()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    chat_task = loop.create_task(chat_client(**arguments))
-
-    try:
-        loop.run_until_complete(chat_task)
-    except KeyboardInterrupt:
-        chat_task.cancel()
-        with suppress(asyncio.CancelledError):
-            loop.run_until_complete(chat_task)
-    finally:
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop.close()
+    with suppress(KeyboardInterrupt):
+        asyncio.run(chat_client(**get_arguments()))
 
 
 if __name__ == "__main__":

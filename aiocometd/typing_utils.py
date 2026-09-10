@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import ssl
-from typing import Any, TypeAlias
 from collections.abc import Awaitable, Callable
-from aiohttp import Fingerprint
-from aiocometd.constants import ConnectionType
+from typing import Any, TypeAlias
 
+from aiohttp import Fingerprint
+
+from aiocometd.constants import ConnectionType
 
 # ---------------------------------------------------------------------------
 # Coroutine & JSON Type Aliases

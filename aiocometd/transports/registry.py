@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Type, Callable, Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportInvalidOperation
 from aiocometd.transports.abc import Transport
 
 #: Registry of transport classes mapped by their connection type.
-TRANSPORT_CLASSES: dict[ConnectionType, Type[Transport]] = {}
+TRANSPORT_CLASSES: dict[ConnectionType, type[Transport]] = {}
+TransportType = TypeVar("TransportType", bound=type[Transport])
 
 
-def register_transport(conn_type: ConnectionType) -> Callable[[Type[Transport]], Type[Transport]]:
+def register_transport(
+    conn_type: ConnectionType,
+) -> Callable[[TransportType], TransportType]:
     """Class decorator for registering transport classes.
 
     This decorator registers a transport implementation class for the specified
-    connection type. It also dynamically sets the class property ``connection_type``
-    to return the given ``conn_type``.
+    connection type and sets its ``connection_type`` class attribute.
 
     Example:
         >>> @register_transport(ConnectionType.LONG_POLLING)
-        ... class LongPollingTransport(TransportBase): # type: ignore[misc]
+        ... class LongPollingTransport(TransportBase):  # type: ignore[misc]
         ...     pass
 
     Args:
@@ -32,22 +35,17 @@ def register_transport(conn_type: ConnectionType) -> Callable[[Type[Transport]],
         and returns it unmodified.
     """
 
-    def decorator(cls: Type[Transport]) -> Type[Transport]:
+    def decorator(cls: TransportType) -> TransportType:
         TRANSPORT_CLASSES[conn_type] = cls
-
-        @property
-        def connection_type(self: Transport) -> ConnectionType:
-            """Return the connection type associated with this transport."""
-            return conn_type
-
-        # TODO: spend some time in future to fix it.
-        cls.connection_type = connection_type
+        cls.connection_type = conn_type
         return cls
 
     return decorator
 
 
-def create_transport(connection_type: ConnectionType, *args: Any, **kwargs: Any) -> Transport:
+def create_transport(
+    connection_type: ConnectionType, *args: Any, **kwargs: Any
+) -> Transport:
     """Create a transport instance for the specified connection type.
 
     Looks up the registered transport class for the given connection type and
@@ -69,4 +67,4 @@ def create_transport(connection_type: ConnectionType, *args: Any, **kwargs: Any)
             f"There is no transport registered for connection type {connection_type!r}"
         )
 
-    return TRANSPORT_CLASSES[connection_type](*args, **kwargs) # type: ignore[unused-args]
+    return TRANSPORT_CLASSES[connection_type](*args, **kwargs)

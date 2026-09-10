@@ -10,9 +10,9 @@ import aiohttp
 
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportError
-from aiocometd.transports.base import TransportBase, Payload, Headers
+from aiocometd.transports.base import TransportBase
 from aiocometd.transports.registry import register_transport
-from aiocometd.typing_utils import JsonObject
+from aiocometd.typing_utils import Headers, JsonObject, Payload
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +36,9 @@ class LongPollingTransport(TransportBase):
         #: Semaphore to limit concurrent HTTP requests to two.
         self._http_semaphore = asyncio.Semaphore(2)
 
-    async def _send_final_payload(self, payload: Payload, *, headers: Headers) -> JsonObject:
+    async def _send_final_payload(
+        self, payload: Payload, *, headers: Headers
+    ) -> JsonObject:
         """Send the final payload to the server and return the response message.
 
         This method performs the actual HTTP POST request used by the long-polling transport. It handles
@@ -55,13 +57,19 @@ class LongPollingTransport(TransportBase):
         """
         try:
             session = self._http_session
+            request_timeout = self.request_timeout
+            timeout = (
+                aiohttp.ClientTimeout(total=request_timeout)
+                if request_timeout is not None
+                else None
+            )
             async with self._http_semaphore:
                 response = await session.post(
                     self._url,
                     json=payload,
-                    ssl=self.ssl,
+                    ssl=self.ssl if self.ssl is not None else True,
                     headers=headers,
-                    timeout=self.request_timeout,
+                    timeout=timeout,
                 )
             response_payload = await response.json(loads=self._json_loads)
             headers = response.headers

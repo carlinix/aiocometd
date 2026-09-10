@@ -1,6 +1,18 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+- Transfer project maintenance to Ricardo Carlini Sperandio from 2025
+- Replace ``setup.py`` and tool-specific configuration with ``pyproject.toml``
+- Adopt uv for dependency locking, environments, and package builds
+- Replace Travis CI and tox with a GitHub Actions Python 3.11-3.14 matrix
+- Add strict distribution metadata, wheel-content, and clean-install smoke
+  checks to continuous integration
+- Replace Flake8 and Pylint with Ruff linting and formatting
+- Stop creating unmanaged asyncio event loops during transport construction
+
 0.4.5 (2019-03-14)
 ------------------
 

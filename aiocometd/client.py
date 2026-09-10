@@ -7,24 +7,17 @@ import json
 import logging
 import reprlib
 from collections import abc
+from collections.abc import AsyncIterator
 from types import TracebackType
-from typing import (
-    Any,
-    AsyncIterator,
-    List,
-    Optional,
-    Set,
-    Type,
-    Union,
-)
+from typing import Any, ClassVar
 
 import aiohttp
 
 from aiocometd.constants import (
     DEFAULT_CONNECTION_TYPE,
+    SERVICE_CHANNEL_PREFIX,
     ConnectionType,
     MetaChannel,
-    SERVICE_CHANNEL_PREFIX,
     TransportState,
 )
 from aiocometd.exceptions import (
@@ -64,7 +57,7 @@ class Client:
         _incoming_queue: Queue for incoming messages.
     """
 
-    _SERVER_ERROR_MESSAGES = {
+    _SERVER_ERROR_MESSAGES: ClassVar[dict[str, str]] = {
         MetaChannel.HANDSHAKE: "Handshake request failed.",
         MetaChannel.CONNECT: "Connect request failed.",
         MetaChannel.DISCONNECT: "Disconnect request failed.",
@@ -72,19 +65,22 @@ class Client:
         MetaChannel.UNSUBSCRIBE: "Unsubscribe request failed.",
     }
 
-    _DEFAULT_CONNECTION_TYPES = [ConnectionType.WEBSOCKET, ConnectionType.LONG_POLLING]
+    _DEFAULT_CONNECTION_TYPES: ClassVar[list[ConnectionType]] = [
+        ConnectionType.WEBSOCKET,
+        ConnectionType.LONG_POLLING,
+    ]
     _HTTP_SESSION_CLOSE_TIMEOUT = 0.25
 
     def __init__(
         self,
         url: str,
-        connection_types: Optional[ConnectionTypeSpec] = None,
+        connection_types: ConnectionTypeSpec | None = None,
         *,
-        connection_timeout: Union[int, float] = 10.0,
-        ssl: Optional[SSLValidationMode] = None,
+        connection_timeout: int | float = 10.0,
+        ssl: SSLValidationMode | None = None,
         max_pending_count: int = 100,
-        extensions: Optional[List[Extension]] = None,
-        auth: Optional[AuthExtension] = None,
+        extensions: list[Extension] | None = None,
+        auth: AuthExtension | None = None,
         json_dumps: JsonDumper = json.dumps,
         json_loads: JsonLoader = json.loads,
     ) -> None:
@@ -109,8 +105,8 @@ class Client:
         else:
             self._connection_types = self._DEFAULT_CONNECTION_TYPES
 
-        self._incoming_queue: Optional[asyncio.Queue[JsonObject]] = None
-        self._transport: Optional[Transport] = None
+        self._incoming_queue: asyncio.Queue[JsonObject] | None = None
+        self._transport: Transport | None = None
         self._closed = True
         self.connection_timeout = connection_timeout
         self.ssl = ssl
@@ -119,7 +115,7 @@ class Client:
         self.auth = auth
         self._json_dumps = json_dumps
         self._json_loads = json_loads
-        self._http_session: Optional[aiohttp.ClientSession] = None
+        self._http_session: aiohttp.ClientSession | None = None
 
     def __repr__(self) -> str:
         """Return a concise developer-friendly representation."""
@@ -140,12 +136,12 @@ class Client:
         return self._closed
 
     @property
-    def subscriptions(self) -> Set[str]:
+    def subscriptions(self) -> set[str]:
         """Return the set of active subscriptions."""
         return self._transport.subscriptions if self._transport else set()
 
     @property
-    def connection_type(self) -> Optional[ConnectionType]:
+    def connection_type(self) -> ConnectionType | None:
         """Return the active connection type if the client is open."""
         return self._transport.connection_type if self._transport else None
 
@@ -171,11 +167,21 @@ class Client:
             await self._http_session.close()
             await asyncio.sleep(self._HTTP_SESSION_CLOSE_TIMEOUT)
 
-    def _pick_connection_type(self, connection_types: List[str]) -> Optional[ConnectionType]:
+    def _pick_connection_type(
+        self, connection_types: list[str]
+    ) -> ConnectionType | None:
         """Select the most preferred supported connection type."""
-        available = {ConnectionType(t) for t in connection_types if t in ConnectionType._value2member_map_}
+        available = {
+            ConnectionType(t)
+            for t in connection_types
+            if t in ConnectionType._value2member_map_
+        }
         intersection = list(set(available) & set(self._connection_types))
-        return min(intersection, key=self._connection_types.index) if intersection else None
+        return (
+            min(intersection, key=self._connection_types.index)
+            if intersection
+            else None
+        )
 
     async def _negotiate_transport(self) -> Transport:
         """Negotiate and create the appropriate transport."""
@@ -197,9 +203,14 @@ class Client:
         try:
             response = await transport.handshake(self._connection_types)
             self._verify_response(response)
-            LOGGER.info("Server supports connection types: %r", response["supportedConnectionTypes"])
+            LOGGER.info(
+                "Server supports connection types: %r",
+                response["supportedConnectionTypes"],
+            )
 
-            chosen_type = self._pick_connection_type(response["supportedConnectionTypes"])
+            chosen_type = self._pick_connection_type(
+                response["supportedConnectionTypes"]
+            )
             if not chosen_type:
                 raise ClientError("Server offers no supported connection types.")
 
@@ -232,14 +243,20 @@ class Client:
         if not self.closed:
             raise ClientInvalidOperation("Client is already open.")
 
-        LOGGER.info("Opening client with connection types %r", [t.value for t in self._connection_types])
+        LOGGER.info(
+            "Opening client with connection types %r",
+            [t.value for t in self._connection_types],
+        )
         self._transport = await self._negotiate_transport()
 
         response = await self._transport.connect()
         self._verify_response(response)
         self._closed = False
 
-        LOGGER.info("Client opened using connection type %r", self.connection_type.value if self.connection_type else "?")
+        LOGGER.info(
+            "Client opened using connection type %r",
+            self.connection_type.value if self.connection_type else "?",
+        )
 
     async def close(self) -> None:
         """Close the connection gracefully."""
@@ -247,7 +264,9 @@ class Client:
             return
 
         if self.pending_count:
-            LOGGER.warning("Closing client with %s pending messages...", self.pending_count)
+            LOGGER.warning(
+                "Closing client with %s pending messages...", self.pending_count
+            )
         else:
             LOGGER.info("Closing client...")
 
@@ -301,9 +320,18 @@ class Client:
     def _raise_server_error(self, response: JsonObject) -> None:
         """Raise a server-side error based on the response."""
         channel = response.get("channel")
-        message = self._SERVER_ERROR_MESSAGES.get(channel)
+        message = (
+            self._SERVER_ERROR_MESSAGES.get(channel)
+            if isinstance(channel, str)
+            else None
+        )
         if not message:
-            message = "Service request failed." if channel.startswith(SERVICE_CHANNEL_PREFIX) else "Publish request failed."
+            message = (
+                "Service request failed."
+                if isinstance(channel, str)
+                and channel.startswith(SERVICE_CHANNEL_PREFIX)
+                else "Publish request failed."
+            )
         raise ServerError(message, response)
 
     async def receive(self) -> JsonObject:
@@ -333,30 +361,33 @@ class Client:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         """Exit the async context and close the client."""
         await self.close()
 
-    async def _get_message(self, connection_timeout: Union[int, float]) -> JsonObject:
+    async def _get_message(self, connection_timeout: int | float) -> JsonObject:
         """Wait for the next available message or raise a timeout."""
-        tasks: List[asyncio.Future[Any]] = []
+        tasks: list[asyncio.Task[Any]] = []
 
         if connection_timeout:
-            timeout_task = asyncio.ensure_future(self._wait_connection_timeout(connection_timeout))
+            timeout_task = asyncio.create_task(
+                self._wait_connection_timeout(connection_timeout)
+            )
             tasks.append(timeout_task)
 
         assert self._incoming_queue is not None
 
-        get_task = asyncio.ensure_future(self._incoming_queue.get(),
-                                         )
+        get_task = asyncio.create_task(
+            self._incoming_queue.get(),
+        )
         tasks.append(get_task)
 
         assert self._transport is not None
 
-        server_disconnected_task = asyncio.ensure_future(
+        server_disconnected_task = asyncio.create_task(
             self._transport.wait_for_state(TransportState.SERVER_DISCONNECTED)
         )
         tasks.append(server_disconnected_task)
@@ -374,15 +405,17 @@ class Client:
 
             if server_disconnected_task in done:
                 await self.close()
-                raise ServerError("Connection closed by the server",
-                                  self._transport.last_connect_result)
+                raise ServerError(
+                    "Connection closed by the server",
+                    self._transport.last_connect_result,
+                )
             raise TransportTimeoutError("Lost connection with the server.")
         except asyncio.CancelledError:
             for task in tasks:
                 task.cancel()
             raise
 
-    async def _wait_connection_timeout(self, timeout: Union[int, float]) -> None:
+    async def _wait_connection_timeout(self, timeout: int | float) -> None:
         """Monitor the connection timeout window."""
         assert self._transport
         while True:
@@ -392,11 +425,16 @@ class Client:
                     self._transport.wait_for_state(TransportState.CONNECTED),
                     timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
 
     async def _check_server_disconnected(self) -> None:
         """Raise an error if the transport has been disconnected by the server."""
-        if self._transport and self._transport.state == TransportState.SERVER_DISCONNECTED:
+        if (
+            self._transport
+            and self._transport.state == TransportState.SERVER_DISCONNECTED
+        ):
             await self.close()
-            raise ServerError("Connection closed by the server", self._transport.last_connect_result)
+            raise ServerError(
+                "Connection closed by the server", self._transport.last_connect_result
+            )

@@ -6,7 +6,7 @@ import asyncio
 import re
 from functools import wraps
 from http import HTTPStatus
-from typing import Any, Optional
+from typing import Any
 
 from aiocometd.constants import META_CHANNEL_PREFIX, SERVICE_CHANNEL_PREFIX
 from aiocometd.typing_utils import CoroFunction, JsonObject
@@ -33,7 +33,7 @@ def defer(coro_func: CoroFunction, delay: int | float | None = None) -> CoroFunc
     return wrapper
 
 
-def get_error_code(error_field: str | None) -> Optional[int]:
+def get_error_code(error_field: str | None) -> int | None:
     """Extract the HTTP-like error code from a CometD error field.
 
     The error field typically follows the format: "code:args:message".
@@ -50,7 +50,7 @@ def get_error_code(error_field: str | None) -> Optional[int]:
     return int(match[0]) if match else None
 
 
-def get_error_message(error_field: str | None) -> Optional[str]:
+def get_error_message(error_field: str | None) -> str | None:
     """Extract the description part from a CometD error field.
 
     The description is typically the last section in the error string
@@ -68,7 +68,7 @@ def get_error_message(error_field: str | None) -> Optional[str]:
     return match[0] if match else None
 
 
-def get_error_args(error_field: str | None) -> Optional[list[str]]:
+def get_error_args(error_field: str | None) -> list[str] | None:
     """Extract the argument list from a CometD error field.
 
     The arguments are typically found between the first and second colons
@@ -89,7 +89,9 @@ def get_error_args(error_field: str | None) -> Optional[list[str]]:
     return match[0].split(",") if match[0] else []
 
 
-def is_matching_response(response_message: JsonObject, message: Optional[JsonObject]) -> bool:
+def is_matching_response(
+    response_message: JsonObject, message: JsonObject | None
+) -> bool:
     """Check if a response message corresponds to a sent message.
 
     Two messages are considered matching if:

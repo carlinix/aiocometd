@@ -4,7 +4,7 @@ Quickstart
 .. py:currentmodule:: aiocometd
 
 :py:class:`Client` is the main interface of the library. It can be used to
-to connect to CometD_ servers, and to send and receive messages.
+connect to CometD_ servers, and to send and receive messages.
 
 Connecting
 ----------
@@ -18,7 +18,7 @@ method.
 
     client = Client("http://example.com/cometd")
     await client.open()
-    # send and receive messsages...
+    # send and receive messages...
     await client.close()
 
 :py:class:`Client` objects can be also used as asynchronous context managers.
@@ -26,7 +26,7 @@ method.
 .. code-block:: python
 
     async with Client("http://example.com/cometd") as client:
-        # send and receive messsages...
+        # send and receive messages...
 
 Channels
 --------
@@ -48,6 +48,8 @@ Meta channels
 they are handled by the client internally, the users of the client shouldn't
 send or receive messages from these channels.
 
+.. _service-channels:
+
 Service channels
 ~~~~~~~~~~~~~~~~
 
@@ -56,6 +58,8 @@ request/response style of communication between client and server
 (as opposed to the publish/subscribe style of communication of *broadcast
 channels*, see below). A server directly responds to messages sent to these
 channels, the sent message is not broadcasted to any other client.
+
+.. _broadcast-channels:
 
 Broadcast channels
 ~~~~~~~~~~~~~~~~~~
@@ -66,11 +70,14 @@ communication, where one sender wants to broadcast information to multiple
 clients.
 
 
+.. _subscriptions:
+
 Subscriptions
 -------------
 
-In order to receive messages from `broadcast channels <Broadcast channels_>`_
-a client must subscribe to these channels first.
+In order to receive messages from
+:ref:`broadcast channels <broadcast-channels>`, a client must subscribe to
+these channels first.
 
 .. code-block:: python
 
@@ -89,9 +96,10 @@ The current set of subscriptions can be obtained from the
 Receiving messages
 ------------------
 
-To receive messages broadcasted by the server after
-`subscribing <Subscriptions_>`_ to these `channels <Broadcast channels_>`_ the
-:py:meth:`~Client.receive` method should be used.
+To receive messages broadcast by the server after
+:ref:`subscribing <subscriptions>` to these
+:ref:`channels <broadcast-channels>`, use the :py:meth:`~Client.receive`
+method.
 
 .. code-block:: python
 
@@ -114,9 +122,9 @@ for incoming messages.
 Sending messages
 ----------------
 
-To send messages to `service <Service channels_>`_ or
-`broadcast <Broadcast channels_>`_ channels the :py:meth:`~Client.publish`
-method can be used.
+To send messages to :ref:`service <service-channels>` or
+:ref:`broadcast <broadcast-channels>` channels, use the
+:py:meth:`~Client.publish` method.
 
 .. code-block:: python
 

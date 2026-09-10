@@ -1,13 +1,13 @@
 import unittest
 from unittest import mock
 
-from aiocometd.transports.registry import (
-    create_transport,
-    register_transport,
-    TRANSPORT_CLASSES,
-)
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportInvalidOperation
+from aiocometd.transports.registry import (
+    TRANSPORT_CLASSES,
+    create_transport,
+    register_transport,
+)
 
 
 class TestTransportFactoryFunctions(unittest.TestCase):

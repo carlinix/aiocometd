@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import suppress
-from typing import Any, Awaitable, Callable, Dict, Optional, cast, AsyncContextManager
+from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, suppress
+from typing import Any, cast
 
 import aiohttp
 import aiohttp.client_ws
 
 from aiocometd.constants import ConnectionType
-from aiocometd.exceptions import TransportError, TransportConnectionClosed
-from aiocometd.typing_utils import JsonObject
+from aiocometd.exceptions import TransportConnectionClosed, TransportError
+from aiocometd.transports.base import TransportBase
 from aiocometd.transports.registry import register_transport
-from aiocometd.transports.base import TransportBase, Payload, Headers
+from aiocometd.typing_utils import Headers, JsonObject, Payload
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ AsyncSessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 #: WebSocket client response type alias
 WebSocket = aiohttp.client_ws.ClientWebSocketResponse
 #: Asynchronous context manager for a WebSocket
-WebSocketContextManager = AsyncContextManager[WebSocket]
+WebSocketContextManager = AbstractAsyncContextManager[WebSocket]
 
 
 class WebSocketFactory:
@@ -44,8 +45,8 @@ class WebSocketFactory:
             http_session: The aiohttp client session used to create WebSocket connections.
         """
         self._http_session = http_session
-        self._context: Optional[WebSocketContextManager] = None
-        self._socket: Optional[WebSocket] = None
+        self._context: WebSocketContextManager | None = None
+        self._socket: WebSocket | None = None
 
     async def close(self) -> None:
         """Close any active WebSocket connection."""
@@ -75,7 +76,7 @@ class WebSocketFactory:
     async def _enter(self, *args: Any, **kwargs: Any) -> WebSocket:
         """Enter the WebSocket context and return a connected socket."""
         self._context = self._http_session.ws_connect(*args, **kwargs)
-        return await self._context.__aenter__()
+        return cast(WebSocket, await self._context.__aenter__())
 
     async def _exit(self) -> None:
         """Exit the WebSocket context, closing the connection."""
@@ -92,8 +93,8 @@ class WebSocketTransport(TransportBase):
         """Initialize the WebSocket transport."""
         super().__init__(**kwargs)
         self._socket_factory = WebSocketFactory(self._http_session)
-        self._pending_exchanges: Dict[int, asyncio.Future[JsonObject]] = {}
-        self._receive_task: Optional[asyncio.Task[None]] = None
+        self._pending_exchanges: dict[int, asyncio.Future[JsonObject]] = {}
+        self._receive_task: asyncio.Task[None] | None = None
 
     # -------------------------------------------------------------------------
     # Socket management
@@ -114,9 +115,9 @@ class WebSocketTransport(TransportBase):
         """
         return await self._socket_factory(
             self.endpoint,
-            ssl=self.ssl,
+            ssl=self.ssl if self.ssl is not None else True,
             headers=headers,
-            receive_timeout=self.request_timeout,
+            timeout=aiohttp.ClientWSTimeout(ws_receive=self.request_timeout),
             autoping=True,
         )
 
@@ -159,7 +160,9 @@ class WebSocketTransport(TransportBase):
     # -------------------------------------------------------------------------
     # Send and receive
     # -------------------------------------------------------------------------
-    async def _send_final_payload(self, payload: Payload, *, headers: Headers) -> JsonObject:
+    async def _send_final_payload(
+        self, payload: Payload, *, headers: Headers
+    ) -> JsonObject:
         """Send the finalized payload over WebSocket.
 
         This method handles connection resets and reconnections on failure.
@@ -178,7 +181,7 @@ class WebSocketTransport(TransportBase):
             try:
                 socket = await self._get_socket(headers)
                 return await self._send_socket_payload(socket, payload)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._reset_socket()
                 raise
             except TransportConnectionClosed:
@@ -188,7 +191,9 @@ class WebSocketTransport(TransportBase):
             LOGGER.warning("Failed to send payload: %s", error)
             raise TransportError(str(error)) from error
 
-    async def _send_socket_payload(self, socket: WebSocket, payload: Payload) -> JsonObject:
+    async def _send_socket_payload(
+        self, socket: WebSocket, payload: Payload
+    ) -> JsonObject:
         """Send a payload through an open WebSocket and await its response."""
         future = self._create_exchange_future(payload)
         try:
@@ -206,7 +211,7 @@ class WebSocketTransport(TransportBase):
     def _start_receive_task(self, socket: WebSocket) -> None:
         """Ensure the background receive task is running."""
         if self._receive_task is None:
-            self._receive_task = self._loop.create_task(self._receive(socket))
+            self._receive_task = asyncio.create_task(self._receive(socket))
             self._receive_task.add_done_callback(self._receive_done)
 
     async def _receive(self, socket: WebSocket) -> None:
@@ -215,12 +220,18 @@ class WebSocketTransport(TransportBase):
             while True:
                 response = await socket.receive()
                 if response.type == aiohttp.WSMsgType.CLOSE:
-                    raise TransportConnectionClosed("Received CLOSE message from server.")
+                    raise TransportConnectionClosed(
+                        "Received CLOSE message from server."
+                    )
 
                 try:
-                    response_payload = cast(Payload, response.json(loads=self._json_loads))
+                    response_payload = cast(
+                        Payload, response.json(loads=self._json_loads)
+                    )
                 except TypeError:
-                    raise TransportError("Received invalid JSON payload from server.") from None
+                    raise TransportError(
+                        "Received invalid JSON payload from server."
+                    ) from None
 
                 await self._consume_payload(response_payload)
                 self._set_exchange_results(response_payload)
@@ -232,7 +243,11 @@ class WebSocketTransport(TransportBase):
         """Callback executed when the receive loop terminates."""
         try:
             result = future.result()
-        except Exception as error:  # pylint: disable=broad-except
+        except asyncio.CancelledError:
+            self._receive_task = None
+            LOGGER.debug("Receive task cancelled.")
+            return
+        except Exception as error:
             result = error
 
         self._receive_task = None

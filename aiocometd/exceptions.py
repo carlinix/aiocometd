@@ -1,6 +1,7 @@
 """Exception types for aiocometd.
 
-Exception hierarchy:
+Exception hierarchy::
+
     AiocometdException
         ├── ClientError
         │     └── ClientInvalidOperation
@@ -13,8 +14,10 @@ Exception hierarchy:
 
 from __future__ import annotations
 
-from typing import Optional, List, cast
+from typing import cast
+
 from aiocometd import utils
+from aiocometd.typing_utils import JsonObject
 
 
 class AiocometdException(Exception):
@@ -27,6 +30,7 @@ class AiocometdException(Exception):
 # ---------------------------------------------------------------------------
 # Transport-level exceptions
 # ---------------------------------------------------------------------------
+
 
 class TransportError(AiocometdException):
     """Error raised during the transportation of messages."""
@@ -48,6 +52,7 @@ class TransportConnectionClosed(TransportError):
 # Server-level exceptions
 # ---------------------------------------------------------------------------
 
+
 class ServerError(AiocometdException):
     """CometD server-side error.
 
@@ -57,7 +62,7 @@ class ServerError(AiocometdException):
     See: https://docs.cometd.org/current/reference/#_code_error_code
     """
 
-    def __init__(self, message: str, response: Optional[utils.JsonObject]) -> None:
+    def __init__(self, message: str, response: JsonObject | None) -> None:
         """Initialize a ServerError.
 
         Args:
@@ -72,19 +77,19 @@ class ServerError(AiocometdException):
         return cast(str, self.args[0])
 
     @property
-    def response(self) -> Optional[utils.JsonObject]:
+    def response(self) -> JsonObject | None:
         """Return the server response message, if available."""
-        return cast(Optional[utils.JsonObject], self.args[1])
+        return cast(JsonObject | None, self.args[1])
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         """Return the raw `error` field from the server response, if present."""
         if self.response is None:
             return None
-        return self.response.get("error")
+        return cast(str | None, self.response.get("error"))
 
     @property
-    def error_code(self) -> Optional[int]:
+    def error_code(self) -> int | None:
         """Return the numeric error code extracted from the response.
 
         Returns:
@@ -93,7 +98,7 @@ class ServerError(AiocometdException):
         return utils.get_error_code(self.error)
 
     @property
-    def error_message(self) -> Optional[str]:
+    def error_message(self) -> str | None:
         """Return the descriptive part of the error field.
 
         Returns:
@@ -102,7 +107,7 @@ class ServerError(AiocometdException):
         return utils.get_error_message(self.error)
 
     @property
-    def error_args(self) -> Optional[List[str]]:
+    def error_args(self) -> list[str] | None:
         """Return the list of argument values included in the error field.
 
         Returns:
@@ -114,6 +119,7 @@ class ServerError(AiocometdException):
 # ---------------------------------------------------------------------------
 # Client-level exceptions
 # ---------------------------------------------------------------------------
+
 
 class ClientError(AiocometdException):
     """CometD client-side error."""

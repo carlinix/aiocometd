@@ -9,13 +9,9 @@ aiocometd
     :target: http://aiocometd.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
-.. image:: https://travis-ci.org/robertmrk/aiocometd.svg?branch=develop
-    :target: https://travis-ci.org/robertmrk/aiocometd
+.. image:: https://github.com/carlinix/aiocometd/actions/workflows/ci.yml/badge.svg?branch=develop
+    :target: https://github.com/carlinix/aiocometd/actions/workflows/ci.yml
     :alt: Build status
-
-.. image:: https://coveralls.io/repos/github/robertmrk/aiocometd/badge.svg
-    :target: https://coveralls.io/github/robertmrk/aiocometd
-    :alt: Coverage
 
 .. image:: https://img.shields.io/badge/License-MIT-yellow.svg
     :target: https://opensource.org/licenses/MIT
@@ -52,32 +48,34 @@ Usage
         # connect to the server
         async with Client("http://example.com/cometd") as client:
 
-                # subscribe to channels to receive chat messages and
-                # notifications about new members
-                await client.subscribe("/chat/demo")
-                await client.subscribe("/members/demo")
+            # subscribe to channels to receive chat messages and
+            # notifications about new members
+            await client.subscribe("/chat/demo")
+            await client.subscribe("/members/demo")
 
-                # send initial message
-                await client.publish("/chat/demo", {
+            # send initial message
+            await client.publish(
+                "/chat/demo",
+                {
                     "user": nickname,
                     "membership": "join",
-                    "chat": nickname + " has joined"
-                })
-                # add the user to the chat room's members
-                await client.publish("/service/members", {
-                    "user": nickname,
-                    "room": "/chat/demo"
-                })
+                    "chat": nickname + " has joined",
+                },
+            )
+            # add the user to the chat room's members
+            await client.publish(
+                "/service/members",
+                {"user": nickname, "room": "/chat/demo"},
+            )
 
-                # listen for incoming messages
-                async for message in client:
-                    if message["channel"] == "/chat/demo":
-                        data = message["data"]
-                        print(f"{data['user']}: {data['chat']}")
+            # listen for incoming messages
+            async for message in client:
+                if message["channel"] == "/chat/demo":
+                    data = message["data"]
+                    print(f"{data['user']}: {data['chat']}")
 
     if __name__ == "__main__":
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(chat())
+        asyncio.run(chat())
 
 For more detailed usage examples take a look at the
 `command line chat example <cli_example_>`_ or for a more complex example with
@@ -94,5 +92,5 @@ https://aiocometd.readthedocs.io/
 .. _asyncio: https://docs.python.org/3/library/asyncio.html
 .. _Bayeux: https://docs.cometd.org/current/reference/#_bayeux
 .. _ext: https://docs.cometd.org/current/reference/#_bayeux_ext
-.. _cli_example: https://github.com/robertmrk/aiocometd/blob/develop/examples/chat.py
+.. _cli_example: https://github.com/carlinix/aiocometd/blob/develop/examples/chat.py
 .. _aiocometd-chat-demo: https://github.com/robertmrk/aiocometd-chat-demo

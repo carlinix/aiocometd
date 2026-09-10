@@ -2,11 +2,12 @@ import asyncio
 import unittest
 from unittest import mock
 
-from aiohttp import client_exceptions, WSMsgType
+from aiohttp import ClientWSTimeout, WSMsgType, client_exceptions
 
-from aiocometd.transports.websocket import WebSocketTransport, WebSocketFactory
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportConnectionClosed, TransportError
+from aiocometd.transports.websocket import WebSocketFactory, WebSocketTransport
+
 
 class TestWebSocketFactory(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -111,9 +112,9 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, expected_socket)
         self.transport._socket_factory.assert_awaited_with(
             self.transport._url,
-            ssl=self.transport.ssl,
+            ssl=True,
             headers=headers,
-            receive_timeout=self.transport.request_timeout,
+            timeout=ClientWSTimeout(ws_receive=self.transport.request_timeout),
             autoping=True,
         )
 
@@ -180,33 +181,31 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         result = await self.transport._send_socket_payload(socket, payload)
 
         self.transport._create_exchange_future.assert_called_with(payload)
-        socket.send_json.assert_called_with(payload,
-                                            dumps=self.transport._json_dumps)
+        socket.send_json.assert_called_with(payload, dumps=self.transport._json_dumps)
         self.transport._start_receive_task.assert_called()
         self.assertEqual(result, expected_result)
 
     async def test_send_socket_payload_on_send_error(self):
-            payload = [{"id": 0}]
-            socket = mock.MagicMock()
-            error = ValueError()
-            socket.send_json = mock.MagicMock(side_effect=error)
-            future = asyncio.Future()
-            exchange_result = asyncio.Future()
-            exchange_result.set_result(future)
-            self.transport._create_exchange_future = mock.MagicMock(
-                return_value=exchange_result
-            )
-            self.transport._start_receive_task = mock.MagicMock()
-            self.transport._set_exchange_errors = mock.MagicMock()
+        payload = [{"id": 0}]
+        socket = mock.MagicMock()
+        error = ValueError()
+        socket.send_json = mock.MagicMock(side_effect=error)
+        future = asyncio.Future()
+        exchange_result = asyncio.Future()
+        exchange_result.set_result(future)
+        self.transport._create_exchange_future = mock.MagicMock(
+            return_value=exchange_result
+        )
+        self.transport._start_receive_task = mock.MagicMock()
+        self.transport._set_exchange_errors = mock.MagicMock()
 
-            with self.assertRaises(ValueError):
-                await self.transport._send_socket_payload(socket, payload)
+        with self.assertRaises(ValueError):
+            await self.transport._send_socket_payload(socket, payload)
 
-            self.transport._create_exchange_future.assert_called_with(payload)
-            socket.send_json.assert_called_with(payload,
-                                                dumps=self.transport._json_dumps)
-            self.transport._set_exchange_errors.assert_called_with(error)
-            self.transport._start_receive_task.assert_not_called()
+        self.transport._create_exchange_future.assert_called_with(payload)
+        socket.send_json.assert_called_with(payload, dumps=self.transport._json_dumps)
+        self.transport._set_exchange_errors.assert_called_with(error)
+        self.transport._start_receive_task.assert_not_called()
 
     async def test_send_final_payload_transport_error(self):
         payload = object()
@@ -216,11 +215,15 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         self.transport._send_socket_payload = mock.AsyncMock(side_effect=exc)
         headers = object()
 
-        with self.assertLogs(WebSocketTransport.__module__, "DEBUG") as log:
-            with self.assertRaisesRegex(TransportError, str(exc)):
-                await self.transport._send_final_payload(payload, headers=headers)
+        with (
+            self.assertLogs(WebSocketTransport.__module__, "DEBUG") as log,
+            self.assertRaisesRegex(TransportError, str(exc)),
+        ):
+            await self.transport._send_final_payload(payload, headers=headers)
 
-        expected = f"WARNING:{WebSocketTransport.__module__}:Failed to send payload: {exc}"
+        expected = (
+            f"WARNING:{WebSocketTransport.__module__}:Failed to send payload: {exc}"
+        )
         self.assertEqual(log.output, [expected])
         self.transport._get_socket.assert_awaited_with(headers)
         self.transport._send_socket_payload.assert_awaited_with(socket, payload)
@@ -245,7 +248,7 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         payload = object()
         socket = object()
         self.transport._get_socket = mock.AsyncMock(return_value=socket)
-        err = asyncio.TimeoutError()
+        err = TimeoutError()
         self.transport._send_socket_payload = mock.AsyncMock(side_effect=err)
         self.transport._reset_socket = mock.AsyncMock()
         headers = object()
@@ -310,10 +313,13 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
             self.transport._receive_done(future)
 
         self.transport._receive_task = None
-        self.assertEqual(log.output, [
-            f"DEBUG:aiocometd.transports.websocket:"
-            f"Receive task finished with: {result!r}"
-        ])
+        self.assertEqual(
+            log.output,
+            [
+                f"DEBUG:aiocometd.transports.websocket:"
+                f"Receive task finished with: {result!r}"
+            ],
+        )
 
     async def test_receive_done_with_error(self):
         future = mock.MagicMock()
@@ -325,10 +331,27 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
             self.transport._receive_done(future)
 
         self.transport._receive_task = None
-        self.assertEqual(log.output, [
-            f"DEBUG:aiocometd.transports.websocket:"
-            f"Receive task finished with: {result!r}"
-        ])
+        self.assertEqual(
+            log.output,
+            [
+                f"DEBUG:aiocometd.transports.websocket:"
+                f"Receive task finished with: {result!r}"
+            ],
+        )
+
+    async def test_receive_done_when_cancelled(self):
+        future = mock.MagicMock()
+        future.result.side_effect = asyncio.CancelledError()
+        self.transport._receive_task = object()
+
+        with self.assertLogs("aiocometd.transports.websocket", "DEBUG") as log:
+            self.transport._receive_done(future)
+
+        self.assertIsNone(self.transport._receive_task)
+        self.assertEqual(
+            log.output,
+            ["DEBUG:aiocometd.transports.websocket:Receive task cancelled."],
+        )
 
     async def test_receive(self):
         # Prepare mock WebSocket message and payload
@@ -351,14 +374,12 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await self.transport._receive(socket)
 
-
         socket.receive.assert_awaited()
         response.json.assert_called_with(loads=self.transport._json_loads)
         self.transport._consume_payload.assert_awaited_with(response_payload)
         self.transport._set_exchange_results(response_payload)
 
     async def test_receive_socket_closed(self):
-
         response = mock.MagicMock()
         response.type = WSMsgType.CLOSE
         response_payload = object()
@@ -370,8 +391,9 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
         self.transport._consume_payload = mock.AsyncMock()
         self.transport._set_exchange_results = mock.AsyncMock()
 
-        with self.assertRaisesRegex(TransportConnectionClosed,
-                                    "Received CLOSE message from server."):
+        with self.assertRaisesRegex(
+            TransportConnectionClosed, "Received CLOSE message from server."
+        ):
             await self.transport._receive(socket)
 
         socket.receive.assert_called()
@@ -390,7 +412,9 @@ class TestWebSocketTransport(unittest.IsolatedAsyncioTestCase):
 
         self.transport._consume_payload = mock.AsyncMock()
         self.transport._set_exchange_results = mock.MagicMock()
-        with self.assertRaisesRegex(TransportError, "Received invalid JSON payload from server."):
+        with self.assertRaisesRegex(
+            TransportError, "Received invalid JSON payload from server."
+        ):
             await self.transport._receive(socket)
 
         socket.receive.assert_called()

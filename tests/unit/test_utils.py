@@ -2,17 +2,17 @@ import asyncio
 import unittest
 from unittest import mock
 
+from aiocometd.constants import SERVICE_CHANNEL_PREFIX, MetaChannel
 from aiocometd.utils import (
-    get_error_message,
-    get_error_code,
-    get_error_args,
     defer,
+    get_error_args,
+    get_error_code,
+    get_error_message,
     is_auth_error_message,
     is_event_message,
-    is_server_error_message,
     is_matching_response,
+    is_server_error_message,
 )
-from aiocometd.constants import MetaChannel, SERVICE_CHANNEL_PREFIX
 
 
 class TestGetErrorCode(unittest.TestCase):
@@ -76,7 +76,6 @@ class TestDefer(unittest.IsolatedAsyncioTestCase):
             return value
 
         self.coro_func = coro_func
-        self.loop = asyncio.get_event_loop()
 
     @mock.patch("aiocometd.utils.asyncio.sleep", new_callable=mock.AsyncMock)
     async def test_defer(self, sleep):

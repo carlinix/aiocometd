@@ -1,0 +1,123 @@
+[build-system]
+requires = ["uv_build>=0.12.12,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "aiocometd"
+version = "1.0.0"
+description = "CometD client for asyncio"
+readme = "README.rst"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+keywords = [
+    "aiohttp",
+    "asyncio",
+    "bayeux",
+    "comet",
+    "cometd",
+    "push",
+    "streaming",
+]
+classifiers = [
+    "Framework :: AsyncIO",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "aiohttp>=3.14.2,<4",
+]
+
+[[project.authors]]
+name = "Ricardo Carlini Sperandio"
+email = "rcarlini@gmail.com"
+
+[[project.maintainers]]
+name = "Ricardo Carlini Sperandio"
+email = "rcarlini@gmail.com"
+
+[project.optional-dependencies]
+examples = [
+    "aioconsole>=0.8,<1",
+]
+
+[project.urls]
+Changelog = "https://aiocometd.readthedocs.io/en/latest/changes.html"
+Documentation = "https://aiocometd.readthedocs.io/"
+Issues = "https://github.com/carlinix/aiocometd/issues"
+Repository = "https://github.com/carlinix/aiocometd"
+
+[dependency-groups]
+test = [
+    "coverage[toml]>=7.10",
+]
+integration = [
+    { include-group = "test" },
+    "docker>=7.1",
+]
+lint = [
+    "ruff>=0.14.4",
+]
+docs = [
+    "sphinx>=8.2",
+]
+
+[[dependency-groups.dev]]
+include-group = "lint"
+
+[[dependency-groups.dev]]
+include-group = "test"
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+module-name = "aiocometd"
+module-root = ""
+source-include = [
+    "DESCRIPTION.rst",
+    "docs/**",
+    "examples/**",
+    "tests/**",
+]
+source-exclude = ["/docs/build"]
+
+[tool.coverage.run]
+branch = true
+source = ["aiocometd"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "PL",
+    "RUF",
+    "SIM",
+    "UP",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"aiocometd/client.py" = ["PLR0913"]
+"aiocometd/transports/base.py" = ["PLR0913"]
+"tests/**/*.py" = ["PLR2004"]
+
+[tool.ruff.format]
+docstring-code-format = true
