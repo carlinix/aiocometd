@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: "1"
+  UV_FROZEN: "1"
+
+jobs:
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+      - name: Install quality dependencies
+        run: uv sync --locked --only-group lint
+      - name: Lint
+        run: uv run --no-sync ruff check --output-format=github .
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check .
+
+  unit-tests:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: uv sync --locked --only-group test
+      - name: Run unit tests
+        run: uv run --no-sync coverage run -m unittest discover tests/unit
+        env:
+          PYTHONWARNINGS: "error::ResourceWarning"
+      - name: Report coverage
+        run: uv run --no-sync coverage report
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+      - name: Install integration dependencies
+        run: uv sync --locked --only-group integration
+      - name: Run integration tests
+        run: uv run --no-sync python -m unittest discover tests/integration
+        env:
+          PYTHONWARNINGS: "error::DeprecationWarning,error::ResourceWarning"
+
+  package:
+    name: Documentation and package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+      - name: Install documentation dependencies
+        run: uv sync --locked --only-group docs
+      - name: Build documentation
+        run: uv run --no-sync sphinx-build -W --keep-going -b html docs/source docs/build/html
+      - name: Build distributions
+        run: uv build
+      - name: Validate distribution metadata
+        run: uv run --with twine twine check --strict dist/*
+      - name: Validate wheel contents
+        run: uv run --with check-wheel-contents check-wheel-contents dist/*.whl
+      - name: Smoke-test the installed wheel
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv venv smoke
+          uv pip install --python smoke "$GITHUB_WORKSPACE"/dist/*.whl
+          smoke/bin/python -c \
+            "import aiocometd; print('aiocometd', aiocometd.__version__)"
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error

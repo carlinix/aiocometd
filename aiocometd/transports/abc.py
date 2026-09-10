@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional, Set, List
+from typing import ClassVar
 
 from aiocometd.constants import ConnectionType, TransportState
 from aiocometd.typing_utils import JsonObject
-
 
 
 class Transport(ABC):
@@ -21,14 +20,7 @@ class Transport(ABC):
     # Properties
     # -----------------------------------------------------------------------
 
-    @property
-    @abstractmethod
-    def connection_type(self) -> ConnectionType:
-        """Return the transport's connection type.
-
-        Returns:
-            ConnectionType: The CometD connection type (e.g., long-polling, websocket).
-        """
+    connection_type: ClassVar[ConnectionType]
 
     @property
     @abstractmethod
@@ -41,7 +33,7 @@ class Transport(ABC):
 
     @property
     @abstractmethod
-    def client_id(self) -> Optional[str]:
+    def client_id(self) -> str | None:
         """Return the client ID assigned by the server.
 
         Returns:
@@ -59,7 +51,7 @@ class Transport(ABC):
 
     @property
     @abstractmethod
-    def subscriptions(self) -> Set[str]:
+    def subscriptions(self) -> set[str]:
         """Return the set of subscribed channels.
 
         Returns:
@@ -68,7 +60,7 @@ class Transport(ABC):
 
     @property
     @abstractmethod
-    def last_connect_result(self) -> Optional[JsonObject]:
+    def last_connect_result(self) -> JsonObject | None:
         """Return the result of the last successful connect request.
 
         Returns:
@@ -89,7 +81,7 @@ class Transport(ABC):
     # -----------------------------------------------------------------------
 
     @abstractmethod
-    async def handshake(self, connection_types: List[ConnectionType]) -> JsonObject:
+    async def handshake(self, connection_types: list[ConnectionType]) -> JsonObject:
         """Perform the CometD handshake operation.
 
         Args:

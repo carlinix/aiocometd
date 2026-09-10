@@ -2,10 +2,10 @@ import asyncio
 import unittest
 from unittest import mock
 
-from aiocometd.transports.base import TransportBase
 from aiocometd.constants import ConnectionType
-from aiocometd.extensions import Extension, AuthExtension
 from aiocometd.exceptions import TransportInvalidOperation
+from aiocometd.extensions import AuthExtension, Extension
+from aiocometd.transports.base import TransportBase
 
 
 class TransportBaseImpl(TransportBase):
@@ -38,7 +38,9 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
         loop = object()
 
         with self.assertRaises((TypeError, TransportInvalidOperation)) as ctx:
-            TransportBaseImpl(url=None, incoming_queue=None, http_session=None, loop=loop) # type: ignore
+            TransportBaseImpl(
+                url=None, incoming_queue=None, http_session=None, loop=loop
+            )  # type: ignore
 
         self.assertIn("loop", str(ctx.exception))
 
@@ -54,13 +56,30 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIs(transport.reconnect_advice, advice)
-        self.assertIsInstance(transport._loop, asyncio.AbstractEventLoop)
 
     def test_init_without_reconnect_advice(self):
-        transport = TransportBaseImpl(
-            url=None, incoming_queue=None, http_session=None
-        )
+        with mock.patch("asyncio.new_event_loop") as new_event_loop:
+            transport = TransportBaseImpl(
+                url=None, incoming_queue=None, http_session=None
+            )
+
         self.assertEqual(transport.reconnect_advice, {})
+        self.assertFalse(hasattr(transport, "_loop"))
+        new_event_loop.assert_not_called()
+
+    def test_connect_done_when_cancelled(self):
+        future = mock.MagicMock()
+        future.result.side_effect = asyncio.CancelledError()
+        self.transport._follow_advice = mock.MagicMock()
+
+        with self.assertLogs("aiocometd.transports.base", "DEBUG") as log:
+            self.transport._connect_done(future)
+
+        self.transport._follow_advice.assert_not_called()
+        self.assertEqual(
+            log.output,
+            ["DEBUG:aiocometd.transports.base:Connect task cancelled."],
+        )
 
     def test_finalize_message_updates_fields(self):
         message = {
@@ -108,7 +127,6 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
         response_message = object()
         await self.transport._consume_message(response_message)
         is_event_message.assert_called_with(response_message)
-
 
     @mock.patch("aiocometd.transports.base.is_event_message")
     async def test_consume_message_event_message(self, is_event_message):
@@ -193,9 +211,7 @@ class TestTransportBase(unittest.IsolatedAsyncioTestCase):
         response = object()
         response2 = object()
         payload = object()
-        self.transport._send_payload = mock.AsyncMock(
-            side_effect=[response, response2]
-        )
+        self.transport._send_payload = mock.AsyncMock(side_effect=[response, response2])
         self.transport._auth = mock.create_autospec(AuthExtension)
         is_auth_error_message.return_value = True
         result = await self.transport._send_payload_with_auth(payload)

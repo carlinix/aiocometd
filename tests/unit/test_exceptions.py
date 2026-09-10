@@ -9,7 +9,7 @@ class TestServerError(TestCase):
             "channel": "/meta/subscription",
             "successful": False,
             "id": "0",
-            "error": "error"
+            "error": "error",
         }
 
         error = ServerError("description message", response)
@@ -19,11 +19,7 @@ class TestServerError(TestCase):
         self.assertEqual(error.error, "error")
 
     def test_properties_on_no_error(self):
-        response = {
-            "channel": "/meta/subscription",
-            "successful": False,
-            "id": "0"
-        }
+        response = {"channel": "/meta/subscription", "successful": False, "id": "0"}
 
         error = ServerError("description message", response)
 
@@ -46,7 +42,7 @@ class TestServerError(TestCase):
             "channel": "/meta/subscription",
             "successful": False,
             "id": "0",
-            "error": "error"
+            "error": "error",
         }
         utils.get_error_code.return_value = 12
 
@@ -62,7 +58,7 @@ class TestServerError(TestCase):
             "channel": "/meta/subscription",
             "successful": False,
             "id": "0",
-            "error": "error"
+            "error": "error",
         }
         utils.get_error_message.return_value = "message"
 
@@ -78,7 +74,7 @@ class TestServerError(TestCase):
             "channel": "/meta/subscription",
             "successful": False,
             "id": "0",
-            "error": "error"
+            "error": "error",
         }
         utils.get_error_args.return_value = ["arg"]
 

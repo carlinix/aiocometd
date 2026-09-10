@@ -1,3 +1,6 @@
-"""Transport classes and functions"""
-from aiocometd.transports.registry import create_transport  # noqa: F401
-from aiocometd.transports import long_polling, websocket  # noqa: F401
+"""Transport classes and factory functions."""
+
+from aiocometd.transports import long_polling, websocket
+from aiocometd.transports.registry import create_transport
+
+__all__ = ["create_transport", "long_polling", "websocket"]

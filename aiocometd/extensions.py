@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
-from aiocometd.typing_utils import Payload, Headers
+
+from aiocometd.typing_utils import Headers, Payload
 
 
 class Extension(ABC):
@@ -24,7 +24,7 @@ class Extension(ABC):
         raise NotImplementedError("Subclasses must implement outgoing()")
 
     @abstractmethod
-    async def incoming(self, payload: Payload, headers: Optional[Headers] = None) -> None:
+    async def incoming(self, payload: Payload, headers: Headers | None = None) -> None:
         """Process incoming payload and headers.
 
         This method is called immediately after a payload is received from the server. Extensions can use this to modify,
@@ -57,7 +57,7 @@ class AuthExtension(Extension):
         """
         pass
 
-    async def incoming(self, payload: Payload, headers: Optional[Headers] = None) -> None:
+    async def incoming(self, payload: Payload, headers: Headers | None = None) -> None:
         """Handle authentication-related responses from the server.
 
         Called right after a payload is received from the server. Implementations can use this to detect authentication

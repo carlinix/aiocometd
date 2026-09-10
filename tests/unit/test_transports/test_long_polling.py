@@ -1,12 +1,11 @@
 import unittest
+from unittest import mock
 
-from aiocometd.transports.long_polling import LongPollingTransport
+from aiohttp import client_exceptions
+
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportError
-
-
-from unittest import mock
-from aiohttp import client_exceptions
+from aiocometd.transports.long_polling import LongPollingTransport
 
 
 def make_aiohttp_post_raises(exc: Exception) -> mock.MagicMock:
@@ -17,12 +16,14 @@ def make_aiohttp_post_raises(exc: Exception) -> mock.MagicMock:
     session_post = mock.MagicMock(return_value=post_ctx)
     return session_post
 
+
 def make_aiohttp_post_mock(response_mock) -> mock.MagicMock:
     post_ctx = mock.MagicMock()
     post_ctx.__aenter__ = mock.AsyncMock(return_value=response_mock)
     post_ctx.__aexit__ = mock.AsyncMock(return_value=None)
     session_post = mock.MagicMock(return_value=post_ctx)
     return session_post
+
 
 def make_async_semaphore_mock() -> mock.AsyncMock:
     sem = mock.AsyncMock()
@@ -67,8 +68,11 @@ class TestLongPollingTransport(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response, resp_data[0])
         session.post.assert_called_once_with(
-            self.transport._url, json=payload, ssl=self.transport.ssl,
-            headers=headers, timeout=self.transport.request_timeout
+            self.transport._url,
+            json=payload,
+            ssl=self.transport.ssl,
+            headers=headers,
+            timeout=self.transport.request_timeout,
         )
         response_mock.json.assert_called_once_with(loads=self.transport._json_loads)
 
@@ -84,9 +88,11 @@ class TestLongPollingTransport(unittest.IsolatedAsyncioTestCase):
         self.transport._consume_payload = mock.AsyncMock()
         headers = {"key": "value"}
 
-        with self.assertLogs(LongPollingTransport.__module__, level="WARNING") as log:
-            with self.assertRaisesRegex(TransportError, "client error"):
-                await self.transport._send_final_payload(payload, headers=headers)
+        with (
+            self.assertLogs(LongPollingTransport.__module__, level="WARNING") as log,
+            self.assertRaisesRegex(TransportError, "client error"),
+        ):
+            await self.transport._send_final_payload(payload, headers=headers)
 
         assert any("Failed to send payload" in entry for entry in log.output)
         self.transport._consume_payload.assert_not_awaited()
@@ -109,11 +115,15 @@ class TestLongPollingTransport(unittest.IsolatedAsyncioTestCase):
         self.transport._consume_payload = mock.AsyncMock(return_value=None)
         headers = {"key": "value"}
 
-        error_message = "No response message received for the first message in the payload"
+        error_message = (
+            "No response message received for the first message in the payload"
+        )
 
-        with self.assertLogs(LongPollingTransport.__module__, level="WARNING") as log:
-            with self.assertRaisesRegex(TransportError, error_message):
-                await self.transport._send_final_payload(payload, headers=headers)
+        with (
+            self.assertLogs(LongPollingTransport.__module__, level="WARNING") as log,
+            self.assertRaisesRegex(TransportError, error_message),
+        ):
+            await self.transport._send_final_payload(payload, headers=headers)
 
         # check log output
         assert any(error_message in entry for entry in log.output)

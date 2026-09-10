@@ -1,24 +1,24 @@
 import asyncio
+import re
 import unittest
 from enum import Enum, unique
 from unittest import mock
 
 from aiocometd.client import Client
-from aiocometd.exceptions import (
-    ServerError,
-    ClientInvalidOperation,
-    TransportError,
-    TransportTimeoutError,
-    ClientError,
-)
 from aiocometd.constants import (
     DEFAULT_CONNECTION_TYPE,
+    SERVICE_CHANNEL_PREFIX,
     ConnectionType,
     MetaChannel,
-    SERVICE_CHANNEL_PREFIX,
     TransportState,
 )
-
+from aiocometd.exceptions import (
+    ClientError,
+    ClientInvalidOperation,
+    ServerError,
+    TransportError,
+    TransportTimeoutError,
+)
 
 
 @unique
@@ -27,6 +27,7 @@ class MockConnectionType(Enum):
     TYPE2 = "type2"
     TYPE3 = "type3"
     TYPE4 = "type4"
+
 
 class TestClient(unittest.IsolatedAsyncioTestCase):
     """Modernized Client tests (Python ≥3.11)."""
@@ -118,9 +119,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         client_session_cls.return_value = session
         result = await self.client._get_http_session()
         self.assertEqual(result, session)
-        client_session_cls.assert_called_with(
-            json_serialize=self.client._json_dumps
-        )
+        client_session_cls.assert_called_with(json_serialize=self.client._json_dumps)
 
     @mock.patch("aiocometd.client.asyncio")
     async def test_close_http_session(self, asyncio_mock):
@@ -130,9 +129,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         asyncio_mock.sleep = mock.AsyncMock()
         await self.client._close_http_session()
         self.client._http_session.close.assert_called()
-        asyncio_mock.sleep.assert_called_with(
-            self.client._HTTP_SESSION_CLOSE_TIMEOUT
-        )
+        asyncio_mock.sleep.assert_called_with(self.client._HTTP_SESSION_CLOSE_TIMEOUT)
 
     @mock.patch("aiocometd.client.asyncio")
     async def test_close_http_session_already_closed(self, asyncio_mock):
@@ -173,14 +170,15 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
     async def test_negotiate_transport_default(self, create_transport):
         response = {
             "supportedConnectionTypes": [DEFAULT_CONNECTION_TYPE.value],
-            "successful": True
+            "successful": True,
         }
         transport = mock.MagicMock()
         transport.connection_type = DEFAULT_CONNECTION_TYPE
         transport.handshake = mock.AsyncMock(return_value=response)
         create_transport.return_value = transport
-        self.client._pick_connection_type = \
-            mock.MagicMock(return_value=DEFAULT_CONNECTION_TYPE)
+        self.client._pick_connection_type = mock.MagicMock(
+            return_value=DEFAULT_CONNECTION_TYPE
+        )
         self.client._verify_response = mock.MagicMock()
         self.client.extensions = object()
         self.client.auth = object()
@@ -205,16 +203,20 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         transport.handshake.assert_called_with(self.client._connection_types)
         self.client._verify_response.assert_called_with(response)
         self.client._pick_connection_type.assert_called_with(
-            response["supportedConnectionTypes"])
-        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
-                       .format(response["supportedConnectionTypes"]))
+            response["supportedConnectionTypes"]
+        )
+        log_message = (
+            "INFO:aiocometd.client:Server supports connection types: {!r}".format(
+                response["supportedConnectionTypes"]
+            )
+        )
         self.assertEqual(log.output, [log_message])
 
     @mock.patch("aiocometd.client.create_transport")
     async def test_negotiate_transport_error(self, create_transport):
         response = {
             "supportedConnectionTypes": [DEFAULT_CONNECTION_TYPE.value],
-            "successful": True
+            "successful": True,
         }
         transport = mock.MagicMock()
         transport.connection_type = DEFAULT_CONNECTION_TYPE
@@ -227,10 +229,13 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         http_session = object()
         self.client._get_http_session = mock.AsyncMock(return_value=http_session)
 
-        with self.assertRaisesRegex(ClientError,
-                                    "Server offers no supported connection types."):
-            with self.assertLogs("aiocometd.client", "DEBUG") as log:
-                await self.client._negotiate_transport()
+        with (
+            self.assertRaisesRegex(
+                ClientError, "Server offers no supported connection types."
+            ),
+            self.assertLogs("aiocometd.client", "DEBUG") as log,
+        ):
+            await self.client._negotiate_transport()
 
         create_transport.assert_called_with(
             DEFAULT_CONNECTION_TYPE,
@@ -241,14 +246,18 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             auth=self.client.auth,
             json_dumps=self.client._json_dumps,
             json_loads=self.client._json_loads,
-            http_session=http_session
+            http_session=http_session,
         )
         transport.handshake.assert_called_with(self.client._connection_types)
         self.client._pick_connection_type.assert_called_with(
-            response["supportedConnectionTypes"])
+            response["supportedConnectionTypes"]
+        )
         transport.close.assert_called()
-        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
-                       .format(response["supportedConnectionTypes"]))
+        log_message = (
+            "INFO:aiocometd.client:Server supports connection types: {!r}".format(
+                response["supportedConnectionTypes"]
+            )
+        )
         self.assertEqual(log.output, [log_message])
 
     @mock.patch("aiocometd.client.create_transport")
@@ -256,9 +265,11 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         non_default_type = ConnectionType.WEBSOCKET
         self.client._connection_types = [non_default_type]
         response = {
-            "supportedConnectionTypes": [DEFAULT_CONNECTION_TYPE.value,
-                                         non_default_type.value],
-            "successful": True
+            "supportedConnectionTypes": [
+                DEFAULT_CONNECTION_TYPE.value,
+                non_default_type.value,
+            ],
+            "successful": True,
         }
         transport1 = mock.MagicMock()
         transport1.connection_type = DEFAULT_CONNECTION_TYPE
@@ -270,15 +281,14 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         transport2.connection_type = non_default_type
         transport2.client_id = None
         create_transport.side_effect = [transport1, transport2]
-        self.client._pick_connection_type = \
-            mock.MagicMock(return_value=non_default_type)
+        self.client._pick_connection_type = mock.MagicMock(
+            return_value=non_default_type
+        )
         self.client._verify_response = mock.MagicMock()
         self.client.extensions = object()
         self.client.auth = object()
         http_session = object()
-        self.client._get_http_session = mock.AsyncMock(
-            return_value=http_session
-        )
+        self.client._get_http_session = mock.AsyncMock(return_value=http_session)
 
         with self.assertLogs("aiocometd.client", "DEBUG") as log:
             result = await self.client._negotiate_transport()
@@ -309,16 +319,20 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                     json_loads=self.client._json_loads,
                     reconnect_advice=transport1.reconnect_advice,
                     http_session=http_session,
-                )
+                ),
             ]
         )
         transport1.handshake.assert_called_with(self.client._connection_types)
         self.client._verify_response.assert_called_with(response)
         self.client._pick_connection_type.assert_called_with(
-            response["supportedConnectionTypes"])
+            response["supportedConnectionTypes"]
+        )
         transport1.close.assert_called()
-        log_message = ("INFO:aiocometd.client:Server supports connection types: {!r}"
-                       .format(response["supportedConnectionTypes"]))
+        log_message = (
+            "INFO:aiocometd.client:Server supports connection types: {!r}".format(
+                response["supportedConnectionTypes"]
+            )
+        )
         self.assertEqual(log.output, [log_message])
 
     async def test_open(self):
@@ -326,9 +340,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         transport.connection_type = ConnectionType.LONG_POLLING
         connect_result = object()
         transport.connect = mock.AsyncMock(return_value=connect_result)
-        self.client._negotiate_transport = mock.AsyncMock(
-            return_value=transport
-        )
+        self.client._negotiate_transport = mock.AsyncMock(return_value=transport)
         self.client._verify_response = mock.MagicMock()
         self.client._closed = True
 
@@ -340,23 +352,21 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._verify_response.assert_called_with(connect_result)
         self.assertEqual(
             log.output,
-            ["INFO:aiocometd.client:Opening client with connection types {!r}"
-             .format([t.value for t in self.client._connection_types]),
-             "INFO:aiocometd.client:Client opened using connection type {!r}"
-             .format(self.client.connection_type.value)])
+            [
+                f"INFO:aiocometd.client:Opening client with connection types {[t.value for t in self.client._connection_types]!r}",
+                f"INFO:aiocometd.client:Client opened using connection type {self.client.connection_type.value!r}",
+            ],
+        )
 
     async def test_open_if_already_open(self):
         transport = mock.MagicMock()
         connect_result = object()
         transport.connect = mock.AsyncMock(return_value=connect_result)
-        self.client._negotiate_transport = mock.AsyncMock(
-            return_value=transport
-        )
+        self.client._negotiate_transport = mock.AsyncMock(return_value=transport)
         self.client._verify_response = mock.MagicMock()
         self.client._closed = False
 
-        with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Client is already open."):
+        with self.assertRaisesRegex(ClientInvalidOperation, "Client is already open."):
             await self.client.open()
 
         self.client._negotiate_transport.assert_not_called()
@@ -373,8 +383,8 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._incoming_queue = asyncio.Queue()
         self.client._incoming_queue.put_nowait(object())
         expected_log = [
-            "WARNING:aiocometd.client:Closing client with {} pending messages...".format(self.client.pending_count),
-            "INFO:aiocometd.client:Client closed."
+            f"WARNING:aiocometd.client:Closing client with {self.client.pending_count} pending messages...",
+            "INFO:aiocometd.client:Client closed.",
         ]
 
         with self.assertLogs("aiocometd.client", "DEBUG") as log:
@@ -406,17 +416,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._transport = mock.MagicMock()
         self.client._transport.client_id = "client_id"
         error = TransportError("description")
-        self.client._transport.disconnect = mock.AsyncMock(
-            side_effect=error
-        )
+        self.client._transport.disconnect = mock.AsyncMock(side_effect=error)
         self.client._transport.close = mock.AsyncMock()
         self.client._close_http_session = mock.AsyncMock()
-        expected_log = ["INFO:aiocometd.client:Closing client...",
-                        "INFO:aiocometd.client:Client closed."]
+        expected_log = [
+            "INFO:aiocometd.client:Closing client...",
+            "INFO:aiocometd.client:Client closed.",
+        ]
 
-        with self.assertLogs("aiocometd.client", "DEBUG") as log:
-            with self.assertRaisesRegex(TransportError, str(error)):
-                await self.client.close()
+        with (
+            self.assertLogs("aiocometd.client", "DEBUG") as log,
+            self.assertRaisesRegex(TransportError, str(error)),
+        ):
+            await self.client.close()
 
         self.assertEqual(log.output, expected_log)
         self.client._transport.disconnect.assert_called()
@@ -430,7 +442,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._close_http_session = mock.AsyncMock()
         expected_log = [
             "INFO:aiocometd.client:Closing client...",
-            "INFO:aiocometd.client:Client closed."
+            "INFO:aiocometd.client:Client closed.",
         ]
 
         with self.assertLogs("aiocometd.client", "DEBUG") as log:
@@ -445,12 +457,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             "channel": MetaChannel.SUBSCRIBE,
             "successful": True,
             "subscription": "channel1",
-            "id": "1"
+            "id": "1",
         }
         self.client._transport = mock.MagicMock()
-        self.client._transport.subscribe = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.subscribe = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
 
@@ -458,17 +468,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             await self.client.subscribe("channel1")
 
         self.client._transport.subscribe.assert_called_with("channel1")
-        self.assertEqual(log.output,
-                         ["INFO:aiocometd.client:Subscribed to channel {}"
-                          .format("channel1")])
+        self.assertEqual(
+            log.output,
+            ["INFO:aiocometd.client:Subscribed to channel {}".format("channel1")],
+        )
         self.client._check_server_disconnected.assert_called()
 
     async def test_subscribe_on_closed(self):
         self.client._closed = True
         self.client._check_server_disconnected = mock.AsyncMock()
 
-        with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Cannot subscribe while client is closed."):
+        with self.assertRaisesRegex(
+            ClientInvalidOperation, "Cannot subscribe while client is closed."
+        ):
             await self.client.subscribe("channel1")
 
         self.client._check_server_disconnected.assert_not_called()
@@ -478,12 +490,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             "channel": MetaChannel.SUBSCRIBE,
             "successful": False,
             "subscription": "channel1",
-            "id": "1"
+            "id": "1",
         }
         self.client._transport = mock.MagicMock()
-        self.client._transport.subscribe = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.subscribe = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
         error = ServerError("Subscribe request failed.", response)
@@ -499,12 +509,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             "channel": MetaChannel.UNSUBSCRIBE,
             "successful": True,
             "subscription": "channel1",
-            "id": "1"
+            "id": "1",
         }
         self.client._transport = mock.MagicMock()
-        self.client._transport.unsubscribe = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.unsubscribe = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
 
@@ -512,17 +520,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             await self.client.unsubscribe("channel1")
 
         self.client._transport.unsubscribe.assert_called_with("channel1")
-        self.assertEqual(log.output,
-                         ["INFO:aiocometd.client:Unsubscribed from channel {}"
-                            .format("channel1")])
+        self.assertEqual(
+            log.output,
+            ["INFO:aiocometd.client:Unsubscribed from channel {}".format("channel1")],
+        )
         self.client._check_server_disconnected.assert_called()
 
     async def test_unsubscribe_on_closed(self):
         self.client._closed = True
         self.client._check_server_disconnected = mock.AsyncMock()
 
-        with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Cannot unsubscribe while client is closed."):
+        with self.assertRaisesRegex(
+            ClientInvalidOperation, "Cannot unsubscribe while client is closed."
+        ):
             await self.client.unsubscribe("channel1")
 
         self.client._check_server_disconnected.assert_not_called()
@@ -532,12 +542,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             "channel": MetaChannel.UNSUBSCRIBE,
             "successful": False,
             "subscription": "channel1",
-            "id": "1"
+            "id": "1",
         }
         self.client._transport = mock.MagicMock()
-        self.client._transport.unsubscribe = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.unsubscribe = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
         error = ServerError("Unsubscribe request failed.", response)
@@ -549,16 +557,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._check_server_disconnected.assert_called()
 
     async def test_publish(self):
-        response = {
-            "channel": "/channel1",
-            "successful": True,
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "successful": True, "id": "1"}
         data = {}
         self.client._transport = mock.MagicMock()
-        self.client._transport.publish = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.publish = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
 
@@ -567,27 +569,23 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, response)
         self.client._transport.publish.assert_called_with("channel1", data)
         self.client._check_server_disconnected.assert_called()
+
     async def test_publish_on_closed(self):
         self.client._closed = True
         self.client._check_server_disconnected = mock.AsyncMock()
 
-        with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Cannot publish while client is closed."):
+        with self.assertRaisesRegex(
+            ClientInvalidOperation, "Cannot publish while client is closed."
+        ):
             await self.client.publish("channel1", {})
 
         self.client._check_server_disconnected.assert_not_called()
 
     async def test_publish_error(self):
-        response = {
-            "channel": "/channel1",
-            "successful": False,
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "successful": False, "id": "1"}
         data = {}
         self.client._transport = mock.MagicMock()
-        self.client._transport.publish = mock.AsyncMock(
-            return_value=response
-        )
+        self.client._transport.publish = mock.AsyncMock(return_value=response)
         self.client._check_server_disconnected = mock.AsyncMock()
         self.client._closed = False
         error = ServerError("Publish request failed.", response)
@@ -599,12 +597,11 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._check_server_disconnected.assert_called()
 
     def test_repr(self):
-        import re
         """Ensure that the Client's __repr__ returns the correct string representation."""
         self.client.url = "http://example.com"
         result = repr(self.client)
 
-        # Permite tanto ConnectionType completo quanto truncado (<ConnectionTy...>)
+        # Accept both complete and truncated ConnectionType representations.
         pattern = re.compile(
             r"Client\(url='http://example\.com', "
             r"connection_types=\[\<ConnectionTy.*websocket.*?, \<ConnectionTy.*long-polling.*?\], "
@@ -616,11 +613,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     def test_verify_response_on_success(self):
         self.client._raise_server_error = mock.MagicMock()
-        response = {
-            "channel": "/channel1",
-            "successful": True,
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "successful": True, "id": "1"}
 
         self.client._verify_response(response)
 
@@ -628,11 +621,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     def test_verify_response_on_error(self):
         self.client._raise_server_error = mock.MagicMock()
-        response = {
-            "channel": "/channel1",
-            "successful": False,
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "successful": False, "id": "1"}
 
         self.client._verify_response(response)
 
@@ -640,23 +629,15 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     def test_verify_response_no_successful_status(self):
         self.client._raise_server_error = mock.MagicMock()
-        response = {
-            "channel": "/channel1",
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "id": "1"}
 
         self.client._verify_response(response)
 
         self.client._raise_server_error.assert_not_called()
 
     def test_raise_server_error_meta(self):
-        response = {
-            "channel": MetaChannel.SUBSCRIBE,
-            "successful": False,
-            "id": "1"
-        }
-        error_message = \
-            type(self.client)._SERVER_ERROR_MESSAGES[response["channel"]]
+        response = {"channel": MetaChannel.SUBSCRIBE, "successful": False, "id": "1"}
+        error_message = type(self.client)._SERVER_ERROR_MESSAGES[response["channel"]]
 
         with self.assertRaisesRegex(ServerError, error_message):
             self.client._raise_server_error(response)
@@ -665,18 +646,14 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         response = {
             "channel": SERVICE_CHANNEL_PREFIX + "test",
             "successful": False,
-            "id": "1"
+            "id": "1",
         }
 
         with self.assertRaisesRegex(ServerError, "Service request failed."):
             self.client._raise_server_error(response)
 
     def test_raise_server_error_publish(self):
-        response = {
-            "channel": "/some/channel",
-            "successful": False,
-            "id": "1"
-        }
+        response = {"channel": "/some/channel", "successful": False, "id": "1"}
 
         with self.assertRaisesRegex(ServerError, "Publish request failed."):
             self.client._raise_server_error(response)
@@ -705,17 +682,14 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._closed = True
         self.client._incoming_queue = None
 
-        with self.assertRaisesRegex(ClientInvalidOperation,
-                                    "Client is closed and no messages remain."):
+        with self.assertRaisesRegex(
+            ClientInvalidOperation, "Client is closed and no messages remain."
+        ):
             await self.client.receive()
 
     async def test_receive_on_closed_and_pending_messages(self):
         self.client._closed = True
-        response = {
-            "channel": "/channel1",
-            "data": {},
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "data": {}, "id": "1"}
         self.client._incoming_queue = mock.MagicMock()
         self.client._incoming_queue.qsize.return_value = 1
         self.client._get_message = mock.AsyncMock(return_value=response)
@@ -724,17 +698,12 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         result = await self.client.receive()
 
         self.assertEqual(result, response)
-        self.client._get_message.assert_called_with(
-            self.client.connection_timeout)
+        self.client._get_message.assert_called_with(self.client.connection_timeout)
         self.client._verify_response.assert_called_with(response)
 
     async def test_receive_on_open(self):
         self.client._closed = False
-        response = {
-            "channel": "/channel1",
-            "data": {},
-            "id": "1"
-        }
+        response = {"channel": "/channel1", "data": {}, "id": "1"}
         self.client._incoming_queue = mock.MagicMock()
         self.client._incoming_queue.qsize.return_value = 1
         self.client._get_message = mock.AsyncMock(return_value=response)
@@ -743,40 +712,30 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         result = await self.client.receive()
 
         self.assertEqual(result, response)
-        self.client._get_message.assert_called_with(
-            self.client.connection_timeout)
+        self.client._get_message.assert_called_with(self.client.connection_timeout)
         self.client._verify_response.assert_called_with(response)
 
     async def test_receive_on_connection_timeout(self):
         self.client._closed = True
         self.client._incoming_queue = mock.MagicMock()
         self.client._incoming_queue.qsize.return_value = 1
-        self.client._get_message = mock.AsyncMock(
-            side_effect=TransportTimeoutError())
+        self.client._get_message = mock.AsyncMock(side_effect=TransportTimeoutError())
         self.client._verify_response = mock.MagicMock()
 
         with self.assertRaises(TransportTimeoutError):
             await self.client.receive()
 
-        self.client._get_message.assert_called_with(
-            self.client.connection_timeout)
+        self.client._get_message.assert_called_with(self.client.connection_timeout)
         self.client._verify_response.assert_not_called()
 
     async def test_aiter(self):
         responses = [
-            {
-                "channel": "/channel1",
-                "data": {},
-                "id": "1"
-            },
-            {
-                "channel": "/channel2",
-                "data": {},
-                "id": "2"
-            }
+            {"channel": "/channel1", "data": {}, "id": "1"},
+            {"channel": "/channel2", "data": {}, "id": "2"},
         ]
         self.client.receive = mock.AsyncMock(
-            side_effect=responses + [ClientInvalidOperation()])
+            side_effect=[*responses, ClientInvalidOperation()]
+        )
 
         result = []
         async for message in self.client:
@@ -796,9 +755,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client.close.assert_called()
 
     async def test_context_manager_on_enter_error(self):
-        self.client.open = mock.AsyncMock(
-            side_effect=TransportError()
-        )
+        self.client.open = mock.AsyncMock(side_effect=TransportError())
         self.client.close = mock.AsyncMock()
 
         with self.assertRaises(TransportError):
@@ -815,7 +772,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         timeout = 2
 
         async def raise_timeout(*args, **kwargs):
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         async def fake_wait_for_state(*args, **kwargs):
             return None
@@ -827,10 +784,9 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         asyncio_mock.wait_for = mock.AsyncMock(side_effect=raise_timeout)
         asyncio_mock.TimeoutError = asyncio.TimeoutError
         await self.client._wait_connection_timeout(timeout)
-        self.client._transport.wait_for_state.assert_has_calls([
-            mock.call(TransportState.CONNECTING),
-            mock.call(TransportState.CONNECTED)
-        ])
+        self.client._transport.wait_for_state.assert_has_calls(
+            [mock.call(TransportState.CONNECTING), mock.call(TransportState.CONNECTED)]
+        )
         asyncio_mock.wait_for.assert_called()
 
     @mock.patch("aiocometd.client.asyncio")
@@ -838,9 +794,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._transport = mock.MagicMock()
         self.client._transport.wait_for_state = mock.AsyncMock()
         timeout = 2
-        asyncio_mock.wait_for = mock.AsyncMock(
-            side_effect=[None, asyncio.TimeoutError()]
-        )
+        asyncio_mock.wait_for = mock.AsyncMock(side_effect=[None, TimeoutError()])
         asyncio_mock.TimeoutError = asyncio.TimeoutError
         done_future = asyncio.Future()
         done_future.set_result(None)
@@ -848,19 +802,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         await self.client._wait_connection_timeout(timeout)
 
-        self.client._transport.wait_for_state.assert_has_calls([
-            mock.call(TransportState.CONNECTING),
-            mock.call(TransportState.CONNECTED),
-            mock.call(TransportState.CONNECTING),
-            mock.call(TransportState.CONNECTED)
-        ])
+        self.client._transport.wait_for_state.assert_has_calls(
+            [
+                mock.call(TransportState.CONNECTING),
+                mock.call(TransportState.CONNECTED),
+                mock.call(TransportState.CONNECTING),
+                mock.call(TransportState.CONNECTED),
+            ]
+        )
         asyncio_mock.wait_for.assert_called()
 
     async def test_get_message_no_timeout(self):
         self.client._incoming_queue = mock.MagicMock()
-        self.client._incoming_queue.get = mock.AsyncMock(
-            return_value=object()
-        )
+        self.client._incoming_queue.get = mock.AsyncMock(return_value=object())
         self.client._wait_connection_timeout = mock.MagicMock()
         self.client._transport = mock.MagicMock()
         self.client._transport.wait_for_state = mock.MagicMock(
@@ -913,8 +867,9 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         )
         timeout = 2
 
-        with self.assertRaisesRegex(TransportTimeoutError,
-                                    "Lost connection with the server"):
+        with self.assertRaisesRegex(
+            TransportTimeoutError, "Lost connection with the server"
+        ):
             await self.client._get_message(timeout)
 
         self.client._incoming_queue.get.assert_called()
@@ -940,8 +895,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         timeout = 2
         self.client._transport.state = TransportState.SERVER_DISCONNECTED
 
-        with self.assertRaisesRegex(ServerError,
-                                    "Connection closed by the server"):
+        with self.assertRaisesRegex(ServerError, "Connection closed by the server"):
             await self.client._get_message(timeout)
 
         self.client._wait_connection_timeout.assert_called_with(timeout)
@@ -956,18 +910,16 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._wait_connection_timeout = mock.MagicMock()
         self.client._transport = mock.MagicMock()
         self.client._transport.wait_for_state = mock.MagicMock()
-        asyncio_mock.ensure_future = mock.MagicMock(
+        asyncio_mock.create_task = mock.MagicMock(
             side_effect=[mock.MagicMock(), mock.MagicMock(), mock.MagicMock()]
         )
-        asyncio_mock.wait = mock.AsyncMock(
-            side_effect=asyncio.CancelledError()
-        )
+        asyncio_mock.wait = mock.AsyncMock(side_effect=asyncio.CancelledError())
         asyncio_mock.CancelledError = asyncio.CancelledError
 
         with self.assertRaises(asyncio.CancelledError):
             await self.client._get_message(1)
 
-        for task in asyncio_mock.ensure_future.side_effect:
+        for task in asyncio_mock.create_task.side_effect:
             task.cancel.assert_called()
 
     async def test_check_server_disconnected_on_disconnected(self):
@@ -975,12 +927,14 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         self.client._transport.state = TransportState.SERVER_DISCONNECTED
         self.client._transport.last_connect_result = object()
 
-        with self.assertRaisesRegex(ServerError,
-                                    "Connection closed by the server") as cm:
+        with self.assertRaisesRegex(
+            ServerError, "Connection closed by the server"
+        ) as cm:
             await self.client._check_server_disconnected()
 
-        self.assertEqual(cm.exception.response,
-                         self.client._transport.last_connect_result)
+        self.assertEqual(
+            cm.exception.response, self.client._transport.last_connect_result
+        )
 
     async def test_check_server_disconnected_on_not_disconnected(self):
         self.client._transport = mock.MagicMock()
