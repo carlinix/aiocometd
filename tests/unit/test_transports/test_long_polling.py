@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from aiohttp import client_exceptions
+from aiohttp import ClientTimeout, client_exceptions
 
 from aiocometd.constants import ConnectionType
 from aiocometd.exceptions import TransportError
@@ -75,6 +75,34 @@ class TestLongPollingTransport(unittest.IsolatedAsyncioTestCase):
             timeout=self.transport.request_timeout,
         )
         response_mock.json.assert_called_once_with(loads=self.transport._json_loads)
+
+    async def test_send_payload_converts_reconnect_timeout(self):
+        resp_data = [{"channel": "test/channel3", "data": {}, "id": 4}]
+        response_mock = mock.MagicMock()
+        response_mock.json = mock.AsyncMock(return_value=resp_data)
+        response_mock.headers = object()
+        session = mock.MagicMock()
+        session.post = mock.AsyncMock(return_value=response_mock)
+
+        self.transport._http_session = session
+        self.transport._http_semaphore = mock.MagicMock()
+        self.transport._reconnect_advice = {"timeout": 2500}
+        self.transport.ssl = object()
+        self.transport._consume_payload = mock.AsyncMock(return_value=resp_data[0])
+
+        payload = [object(), object()]
+        headers = {"key": "value"}
+
+        response = await self.transport._send_final_payload(payload, headers=headers)
+
+        self.assertEqual(response, resp_data[0])
+        session.post.assert_called_once_with(
+            self.transport._url,
+            json=payload,
+            ssl=self.transport.ssl,
+            headers=headers,
+            timeout=ClientTimeout(total=3.0),
+        )
 
     async def test_send_payload_final_payload_client_error(self):
         post_exception = client_exceptions.ClientError("client error")

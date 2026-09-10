@@ -1,47 +1,9 @@
 import asyncio
 import unittest
 
-import aiohttp
-
 from aiocometd import Client, ConnectionType
 from aiocometd.exceptions import TransportTimeoutError
 from tests.integration.helpers import DockerContainer
-
-
-async def wait_for_cometd_ready(
-    url="http://localhost:9999/cometd/handshake", timeout=60
-):
-    """Waits until the CometD server responds successfully to a handshake request."""
-    payload = [
-        {
-            "version": "1.0",
-            "minimumVersion": "1.0",
-            "channel": "/meta/handshake",
-            "supportedConnectionTypes": ["long-polling", "websocket"],
-            "id": "1",
-        }
-    ]
-
-    async with aiohttp.ClientSession() as s:
-        for attempt in range(timeout):
-            try:
-                async with s.post(url, json=payload) as r:
-                    if r.status == 200:
-                        try:
-                            data = await r.json()
-                            if data and data[0].get("successful", False):
-                                print(
-                                    f"CometD ready (handshake OK after {attempt + 1}s)"
-                                )
-                                return True
-                        except Exception:
-                            pass
-            except aiohttp.ClientError:
-                pass
-
-            await asyncio.sleep(1)
-
-    raise TimeoutError("CometD did not recover in time")
 
 
 class BaseTestCase(unittest.IsolatedAsyncioTestCase):
