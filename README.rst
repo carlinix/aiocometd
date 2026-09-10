@@ -9,7 +9,7 @@ aiocometd
     :target: http://aiocometd.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
-.. image:: https://github.com/carlinix/aiocometd/actions/workflows/ci.yml/badge.svg?branch=develop
+.. image:: https://github.com/carlinix/aiocometd/actions/workflows/ci.yml/badge.svg?branch=main
     :target: https://github.com/carlinix/aiocometd/actions/workflows/ci.yml
     :alt: Build status
 
@@ -125,5 +125,5 @@ all development dependencies, then run the quality and unit-test checks:
 .. _uv: https://docs.astral.sh/uv/
 .. _Bayeux: https://docs.cometd.org/current/reference/#_bayeux
 .. _ext: https://docs.cometd.org/current/reference/#_bayeux_ext
-.. _cli_example: https://github.com/carlinix/aiocometd/blob/develop/examples/chat.py
+.. _cli_example: https://github.com/carlinix/aiocometd/blob/main/examples/chat.py
 .. _aiocometd-chat-demo: https://github.com/robertmrk/aiocometd-chat-demo
