@@ -1,0 +1,207 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Existing version tag to release
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: "1"
+  UV_FROZEN: "1"
+
+jobs:
+  guard:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Match the tag to the package version
+        id: version
+        env:
+          RELEASE_REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_REF#refs/tags/}"
+          version="${tag#v}"
+          project_version=$(python3 -c \
+            "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+
+          if ! git show-ref --verify --quiet "refs/tags/${tag}"; then
+            echo "::error::Release ref '${tag}' is not an existing tag."
+            exit 1
+          fi
+
+          if [[ "${version}" != "${project_version}" ]]; then
+            echo "::error::Tag version '${version}' does not match package version '${project_version}'."
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build and validate distributions
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.guard.outputs.tag }}
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          python-version: "3.14"
+          version: "0.12.12"
+      - name: Build distributions
+        run: uv build
+      - name: Validate distribution metadata
+        run: uv run --with twine twine check --strict dist/*
+      - name: Validate wheel contents
+        run: uv run --with check-wheel-contents check-wheel-contents dist/*.whl
+      - name: Smoke-test the installed wheel
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv venv smoke
+          uv pip install --python smoke "${GITHUB_WORKSPACE}"/dist/*.whl
+          smoke/bin/python -c \
+            "import aiocometd; print('aiocometd', aiocometd.__version__)"
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: distributions
+          path: dist/
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: ${{ vars.ENABLE_PYPI_PUBLISH == 'true' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/aiocometd/
+    permissions:
+      id-token: write
+    steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          version: "0.12.12"
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: distributions
+          path: dist/
+      - name: Generate PEP 740 attestations
+        uses: astral-sh/attest-action@f589a42a7efb6fe400b4f400de60b4bc90390027 # v0.0.6
+      - name: Publish with Trusted Publishing
+        run: uv publish --trusted-publishing always dist/*
+
+  publish-gcp:
+    name: Publish to Google Artifact Registry
+    if: ${{ vars.ENABLE_GCP_PUBLISH == 'true' }}
+    needs: [guard, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: gcp
+      url: ${{ vars.GCP_ARTIFACT_REGISTRY_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.guard.outputs.tag }}
+      - name: Validate registry configuration
+        env:
+          GCP_ARTIFACT_REGISTRY_URL: ${{ vars.GCP_ARTIFACT_REGISTRY_URL }}
+        run: |
+          if [[ -z "${GCP_ARTIFACT_REGISTRY_URL}" ]]; then
+            echo "::error::GCP_ARTIFACT_REGISTRY_URL is not configured."
+            exit 1
+          fi
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: distributions
+          path: dist/
+      - name: Authenticate to Google Cloud
+        id: google-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          create_credentials_file: false
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          version: "0.12.12"
+      - name: Publish with a short-lived access token
+        env:
+          UV_PUBLISH_PASSWORD: ${{ steps.google-auth.outputs.access_token }}
+          UV_PUBLISH_URL: ${{ vars.GCP_ARTIFACT_REGISTRY_URL }}
+          UV_PUBLISH_USERNAME: oauth2accesstoken
+        run: uv publish dist/*
+
+  github-release:
+    name: Create GitHub release
+    if: >-
+      ${{ always()
+      && needs.guard.result == 'success'
+      && needs.build.result == 'success'
+      && (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+      && (needs.publish-gcp.result == 'success' || needs.publish-gcp.result == 'skipped') }}
+    needs: [guard, build, publish-pypi, publish-gcp]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.guard.outputs.tag }}
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: distributions
+          path: dist/
+      - name: Create release with distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+        run: |
+          gh release create "${RELEASE_TAG}" dist/* \
+            --generate-notes \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${RELEASE_TAG}" \
+            --verify-tag

@@ -13,6 +13,7 @@ Contents
 
     guide
     api
+    releasing
     changes
 
 Indices and tables
